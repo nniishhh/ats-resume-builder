@@ -1,0 +1,32 @@
+company_name: Rapsodo
+position_name: Business Intelligence Intern
+---
+About the job
+Rapsodo's headquarters are situated in Singapore, complemented by offices strategically positioned across the United States, Turkey, and Japan. Rapsodo is more than sports technology and data analytics — it is the undisputed leader in affordable, pro-grade technology for athletes looking to get more out of their game.
+We are looking for a proactive and detail-oriented individual to join our Business Operations team. In this role, you will play a key part in driving operational excellence and supporting vital data initiatives that enable our business to make informed decisions.
+Join Team Rapsodo in defying limits and unlocking limitless potential — one data point and one heartfelt success story at a time.
+Powered by Athletes who get it, and Engineers who can do it.
+
+The Role:
+This will be a high impact role centered around driving usage and adoption of data across sales and customer lifecycle. As the Business Intelligence intern you will be tasked with developing and maintaining business dashboards and reports tracking key performance indicators across the Golf and Diamond Sports business units. You will support Rapsodo's SaaS transformation by tracking new initiatives to measure the impact they have on the business.
+
+Key Roles and Responsibilities:
+Responsible for updating North America Weekly Sales dashboards for both Golf and DS.
+Maintain SaaS Transformation Jira board and updates.
+Utilize tools like Mixpanel, Salesforce, Salesloft, and Shopify to deliver business insights and track the performance of new business initiatives.
+Collaborate with CS, Sales and Marketing on projects related to Sales and customer lifecycle.
+Work with Salesforce developers to support testing and development of our GTM systems roadmap.
+Support the implementation of data governance policies and best practices across our GTM and customer lifecycle systems.
+Support onboarding and testing of New system/tooling within our tech stack.
+
+Requirements
+
+Currently pursuing an undergraduate degree in Business Analytics, Information Systems, Data Analytics, Computer Science, Economics, Finance, Operations, or a related field.
+Interest in business intelligence, data analysis, and using data to support sales and customer lifecycle decisions.
+Comfortable working with numbers, dashboards, and structured datasets.
+Basic proficiency in Excel or Google Sheets.
+Able to communicate insights clearly and work effectively with cross-functional teams.
+Organized, detail-oriented, and able to manage both recurring tasks and project work.
+Willingness to learn new tools, systems, and business processes.
+Prior internship, coursework, project, or part-time experience related to data analysis, business operations, analytics, or reporting.
+Exposure to tools such as Salesforce, Mixpanel, Shopify, Jira, SQL, Tableau, Power BI, or other BI / SaaS platforms.

@@ -1,0 +1,116 @@
+[
+  {
+    "project_id": "agoda_task_prioritization_system",
+    "title": "Supply Task Prioritization Framework and Dashboard",
+    "company": "Agoda",
+    "timeframe": "Jun 2021 - Nov 2021",
+    "example_bullets": [
+      "Designed and deployed a multi-metric task prioritization system that increased focus on critical supply issues by 25% through data-driven ranking and team training.",
+      "Established a task prioritization framework using multi-variable metrics (hotel vs. ticket scores) and trained supply teams on the new dashboard, driving a 25% increase in the resolution of critical tasks."   
+    ],
+    "core": {
+      "problem": "Supply teams lacked a structured, data-driven system to prioritize high-impact hotel and ticket issues.",
+      "actions": [
+        "Defined multi-variable business metrics incorporating hotel and ticket scores",
+        "Built a task prioritization framework to rank supply issues",
+        "Developed a dashboard to operationalize the prioritization logic",
+        "Trained supply teams on adoption and usage of the new system"
+      ],
+      "outputs": [
+        "Task prioritization framework",
+        "Operational dashboard",
+        "Team enablement and training materials"
+      ],
+      "results": [
+        "Increased resolution of critical tasks by 25%"
+      ],
+      "tools": [
+        "SQL",
+        "Excel",
+        "Dashboarding Tools"
+      ],
+      "constraints": [
+        "Large and diverse supply issue backlog",
+        "Need for operational adoption across teams"
+      ]
+    },
+    "tags": {
+      "skills": [
+        "Business Analytics",
+        "Metric Design",
+        "Dashboard Development",
+        "Stakeholder Training"
+      ],
+      "domains": [
+        "Online Travel",
+        "Supply Operations"
+      ],
+      "work_type": [
+        "Operational Analytics",
+        "Process Improvement"
+      ],
+      "interaction_type": [
+        "Cross-functional",
+        "Operations Team"
+      ]
+    }
+  },
+  {
+    "project_id": "agoda_roomtype_mismatch_detection",
+    "title": "Room-Type Mismatch Detection Using SQL and NLP",
+    "company": "Agoda",
+    "timeframe": "Jun 2021 - Nov 2021",
+    "example_bullets": [
+      "Engineered an AI-driven solution for room-type mismatch detection, leveraging Python and SQL for large-scale data processing and applying NLP techniques (TF-IDF, Levenshtein Distance) to preprocess text, which boosted detection rates by 120%.",
+      "Refined dynamic pricing accuracy by combining large-scale SQL analysis with NLP techniques (lemmatization, TF-IDF, edit distance) to detect room-type mismatches, increasing detection by 120%."
+  ],
+    "core": {
+      "problem": "Room-type mismatches between listings caused pricing inaccuracies and availability errors.",
+      "actions": [
+        "Extracted large-scale listing data using SQL",
+        "Applied NLP techniques including lemmatization, TF-IDF, and edit distance (Levenshtein)",
+        "Built matching logic to detect inconsistencies between room descriptions",
+        "Validated detection performance against existing rules"
+      ],
+      "outputs": [
+        "Room-type mismatch detection framework",
+        "Improved data validation logic"
+      ],
+      "results": [
+        "Increased mismatch detection rate by 120%",
+        "Reduced downstream pricing and availability errors"
+      ],
+      "tools": [
+        "SQL",
+        "Python",
+        "NLP",
+        "TF-IDF",
+        "Levenshtein Distance"
+      ],
+      "constraints": [
+        "Large-scale listing dataset",
+        "Unstructured room description text"
+      ]
+    },
+    "tags": {
+      "skills": [
+        "SQL",
+        "NLP",
+        "Text Matching",
+        "Data Quality",
+        "Performance Analysis"
+      ],
+      "domains": [
+        "Online Travel",
+        "Pricing Optimization"
+      ],
+      "work_type": [
+        "Data Quality Improvement",
+        "Analytical Modeling"
+      ],
+      "interaction_type": [
+        "Supply Team"
+      ]
+    }
+  }
+]

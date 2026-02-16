@@ -1,0 +1,11 @@
+*.pdf
+*.aux
+*.log
+*.out
+__pycache__/
+.git/
+.env
+prompt_logs/
+.streamlit/secrets.toml
+_jd_temp.json
+oranich_resume_*.tex

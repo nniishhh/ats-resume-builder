@@ -1,0 +1,100 @@
+\documentclass[a4paper,10pt]{article}
+\usepackage[left=0.6in, right=0.6in, top=0.6in, bottom=0.6in]{geometry}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref} % Hides the blue boxes around links
+\usepackage{titlesec}
+\usepackage{fontspec}
+\setmainfont{Times New Roman}
+
+% Turn off page numbering
+\pagestyle{empty}
+
+% Formatting sections - Increased spacing here to fill the page
+\titleformat{\section}{\large\bfseries\uppercase}{}{0em}{}[\titlerule]
+\titlespacing{\section}{0pt}{12pt}{6pt} 
+
+% Formatting lists - Added 'itemsep' to put space between bullets
+\setlist[itemize]{leftmargin=*, itemsep=2pt, topsep=2pt, parsep=0pt}
+
+\begin{document}
+
+% Header
+\begin{center}
+    {\Huge \textbf{ORANICH JAMKACHORNKIAT}} \\ \vspace{4pt}
+    (332) 283-4130 $|$ \href{mailto:oj2191@columbia.edu}{oj2191@columbia.edu} $|$ \href{https://linkedin.com/in/oranich-jamkachornkiat}{linkedin.com/in/oranich-jamkachornkiat}
+\end{center}
+
+\vspace{5pt}
+
+% Education
+\section{Education}
+\noindent \textbf{Columbia University} \hfill New York, NY \\
+\textit{MS, Operations Research} \hfill Expected Dec 2026 \\
+GPA: 3.75 $|$ Coursework: Optimization Models, Business Analytics, Operations Strategy, Agentic AI
+
+\vspace{6pt}
+
+\noindent \textbf{Chulalongkorn University (Ranked \#1 in Thailand)} \hfill Bangkok, TH \\
+\textit{BEng, Robotics \& AI Engineering} \hfill Oct 2023 \\
+GPA: 3.61 $|$ Honors: First Class Honors, Academic Excellence Scholarship (2022), RoboCup – 2nd Place \\
+Leadership: Student Committee Rep, President of Robotics \& AI Camp, PM at TEDxBangkok Youth.
+
+% Experience
+\section{Experience}
+\noindent \textbf{SWAT Mobility (AI-Driven Transportation Solution)} \hfill Singapore, SG \\
+\textit{Data Scientist} \hfill Nov 2023 - Dec 2025
+\begin{itemize}
+    \item Pioneered interactive geospatial visualizations (Kepler.gl) by aggregating 2M+ GPS records using SQL/Python; revealed mobility trends in Japan’s transit system, empowering stakeholders to reduce off-peak trips by 30\%.
+    \item Designed Tableau dashboards to monitor route optimization; diagnosed variances between planned vs. actual routes, enabling operations to adjust schedules and improve on-time delivery by 10\%.
+    \item Analyzed inefficiencies in logistics planning for 10K daily 7-Eleven deliveries by modeling tradeoffs between cost and capacity, reducing planning time by 70\% and costs by 8\%.
+    \item Created an automated daily IT workflow (Python/Windmill) to deliver instant task status and data-validation alerts, reducing support time from 4 hours to real time.
+\end{itemize}
+
+\vspace{6pt}
+
+\noindent \textbf{Shopee (E-commerce \& Technology Platform, SEA Group)} \hfill Bangkok, TH \\
+\textit{Data Analytics Intern (Automation)} \hfill May 2022 - Aug 2022
+\begin{itemize}
+    \item Developed an automated pricing evaluation framework for merchant eligibility; replaced manual reviews with data-driven logic, slashing decision turnaround from 7 days to 1 day.
+    \item Improved merchant onboarding by benchmarking OCR systems (Google, AWS, Azure) with image preprocessing to validate ID/bank documents, cutting verification time by 85\%.
+\end{itemize}
+
+\vspace{6pt}
+
+\noindent \textbf{Agoda (Online Travel \& Booking Platform, Booking Holdings)} \hfill Bangkok, TH \\
+\textit{Data Analytics Intern (Supply Chain)} \hfill Jun 2021 - Nov 2021
+\begin{itemize}
+    \item Established a task prioritization framework using multi-variable metrics and trained supply teams, driving a 25\% increase in critical task resolution.
+    \item Refined dynamic pricing accuracy using SQL analysis and NLP (lemmatization, TF-IDF) to detect room-type mismatches, increasing detection by 120\%.
+\end{itemize}
+
+% Academic Projects
+\section{Academic Projects}
+\noindent \textbf{Columbia University - Credit-Risk Modeling (Kalamata Capital Group, 2025)}
+\begin{itemize}
+    \item Built credit-risk models (XGBoost, CatBoost, Logistic Reg) on 100K transactions with 200 features, using TimeSeriesSplit CV and SHAP; achieved 0.82 AUC, accelerating underwriting.
+    \item Utilized Cursor for AI-assisted code generation and refactoring of the data pipeline, increasing velocity.
+\end{itemize}
+
+\vspace{6pt}
+
+\noindent \textbf{Chulalongkorn University - Algorithmic FX Trading Strategy (2023)}
+\begin{itemize}
+    \item Designed an FX trading pipeline with feature engineering and optimized ML classifiers (Random Forest, XGBoost) to predict profitable entries, achieving 5.8\% simulated net profit.
+\end{itemize}
+
+\vspace{6pt}
+
+\noindent \textbf{Chulalongkorn University - Conversational Recommender System (2023)}
+\begin{itemize}
+    \item Launched an LLM-based recommender (LangChain, GPT-3.5) with Weaviate vector search, achieving $>$70\% single-turn accuracy. Benchmarked embeddings for 1.3K restaurants and 9K reviews.
+\end{itemize}
+
+% Skills
+\section{Skills}
+\noindent \textbf{Programming \& Data:} SQL, Excel, Python (NumPy, Pandas, Scikit-learn), PySpark, Git, VS Code. \\
+\textbf{Visualization:} Tableau, Power BI, Kepler.gl, Geospatial Analysis, Seaborn, Plotly. \\
+\textbf{Stats \& ML:} Regression, Clustering, Feature Engineering, Inferential Statistics. \\
+\textbf{AI \& NLP:} LLMs (RAG, LangChain), Fine-tuning, NER, Prompt Engineering, OCR.
+
+\end{document}

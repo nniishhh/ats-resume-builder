@@ -1,0 +1,239 @@
+[
+  {
+    "project_id": "swat_dhl_address_ner",
+    "title": "Production Address Standardization Pipeline for DHL Turkey",
+    "company": "SWAT Mobility",
+    "timeframe": "Nov 2023 - Dec 2025",
+    "example_bullets": [
+      "Deployed a production-grade AI-driven solution using Python to fine-tune BERT/RoBERTa NLP models for Named Entity Recognition, standardizing logistics address data with 98% extraction accuracy and enhancing routing reliability.",
+      "Engineered and launched a production-grade BERT/RoBERTa deep learning NER pipeline using Python and Git, leveraging MLOps CI/CD workflows to standardize noisy logistics address data with 98% extraction accuracy, improving downstream routing reliability.",
+      "Built and deployed a production-grade BERT/RoBERTa NER pipeline using Python to standardize noisy logistics address data, enhancing data initiatives and operational excellence by achieving 98% extraction accuracy and improving data quality."
+    ],
+    "core": {
+      "problem": "Noisy and unstructured address data reduced routing robustness and downstream operational reliability.",
+      "actions": [
+        "Fine-tuned BERT/RoBERTa NER models to extract structured address entities from noisy text",
+        "Engineered and deployed a production ML pipeline for entity extraction",
+        "Built CI/CD workflows, unit tests, and Git-based version control processes",
+        "Standardized extracted entities for downstream routing integration"
+      ],
+      "outputs": [
+        "Production-ready NER pipeline",
+        "Standardized address dataset",
+        "Automated CI/CD and testing workflows"
+      ],
+      "results": [
+        "Achieved 98% entity extraction accuracy",
+        "Improved data quality and downstream routing robustness"
+      ],
+      "tools": [
+        "Python",
+        "BERT",
+        "RoBERTa",
+        "NER",
+        "Git",
+        "CI/CD"
+      ],
+      "constraints": [
+        "Noisy real-world address data",
+        "Integration with downstream routing systems"
+      ]
+    },
+    "tags": {
+      "skills": [
+        "Machine Learning",
+        "NLP",
+        "Model Fine-tuning",
+        "MLOps",
+        "Data Engineering"
+      ],
+      "domains": [
+        "Logistics",
+        "Transportation"
+      ],
+      "work_type": [
+        "Production ML",
+        "Pipeline Development"
+      ],
+      "interaction_type": [
+        "Cross-functional"
+      ]
+    }
+  },
+  {
+    "project_id": "swat_geospatial_transit_analytics",
+    "title": "Geospatial Mobility Analytics for Public Transit Optimization",
+    "company": "SWAT Mobility",
+    "timeframe": "Nov 2023 - Dec 2025",
+    "example_bullets": [
+      "Transformed over 2M GPS trajectories using Python and SQL for comprehensive data processing and analysis, generating interactive geospatial dashboards that informed stakeholders to reduce off-peak transit trips by 30%.",
+      "Pioneered interactive geospatial dashboards (Kepler.gl, MovingPandas) from 2M GPS records to optimize bus schedules and reveal mobility trends in Japan’s transit system; insights shared with government stakeholders reduced off-peak trips by 30%.",
+      "Pioneered interactive geospatial visualizations (Kepler.gl) by extracting and aggregating 2M+ GPS records using SQL and Python; revealed mobility trends in Japan’s transit system that empowered government stakeholders to reduce off-peak trips by 30%."
+    ],
+    "core": {
+      "problem": "Transit systems required data-driven insights to optimize scheduling and reduce inefficient off-peak operations.",
+      "actions": [
+        "Extracted and aggregated 2M+ GPS trajectory records using SQL and Python",
+        "Built interactive geospatial dashboards using Kepler.gl and MovingPandas",
+        "Analyzed mobility patterns to identify network inefficiencies",
+        "Shared insights with government stakeholders to inform scheduling decisions"
+      ],
+      "outputs": [
+        "Interactive geospatial dashboards",
+        "Mobility trend reports"
+      ],
+      "results": [
+        "Reduced off-peak trips by 30%"
+      ],
+      "tools": [
+        "Python",
+        "SQL",
+        "Kepler.gl",
+        "MovingPandas"
+      ],
+      "constraints": [
+        "Large-scale GPS trajectory data (2M+ records)",
+        "Stakeholder-driven decision environment"
+      ]
+    },
+    "tags": {
+      "skills": [
+        "Geospatial Analysis",
+        "Data Visualization",
+        "SQL",
+        "Exploratory Data Analysis"
+      ],
+      "domains": [
+        "Public Transit",
+        "Mobility"
+      ],
+      "work_type": [
+        "Analytics",
+        "Dashboard Development"
+      ],
+      "interaction_type": [
+        "Government Stakeholders"
+      ]
+    }
+  },
+  {
+    "project_id": "swat_7eleven_route_optimization",
+    "title": "Large-Scale Vehicle Routing Optimization for 7-Eleven Deliveries",
+    "company": "SWAT Mobility",
+    "timeframe": "Nov 2023 - Dec 2025",
+    "example_bullets": [
+      "Automated route planning for 10K daily 7-Eleven deliveries using vehicle-routing optimization (VRP) and agglomerative clustering, in partnership with Operations, achieving 8% cost savings and a 70% reduction in planning time.",
+      "Designed Tableau dashboards to monitor route optimization performance; diagnosed variances between planned vs. actual routes to pinpoint bottlenecks, enabling the operations team to adjust schedules and improve on-time delivery by 10%.",
+      "Analyzed inefficiencies in manual logistics planning for 10K daily 7-Eleven deliveries by modeling tradeoffs between cost, service level, and capacity under operational constraints, reducing planning time by 70% and costs by 8%."
+
+    ],
+    "core": {
+      "problem": "Manual logistics planning for 10K daily deliveries was time-consuming and suboptimal under operational constraints.",
+      "actions": [
+        "Modeled vehicle routing problems (VRP) under cost, service-level, and capacity constraints",
+        "Applied clustering (including agglomerative clustering) to improve route structure",
+        "Automated route planning for 10K daily deliveries",
+        "Conducted offline evaluations comparing routing and ML variants",
+        "Tracked KPIs including planning latency, cost per route, and service-level adherence",
+        "Built Tableau dashboards to monitor planned vs. actual route performance",
+        "Diagnosed route variances to identify bottlenecks"
+      ],
+      "outputs": [
+        "Automated route planning system",
+        "Performance monitoring dashboards",
+        "Optimization evaluation framework"
+      ],
+      "results": [
+        "Reduced planning time by 70%",
+        "Improved cost efficiency by 8%"      ],
+      "tools": [
+        "Python",
+        "VRP",
+        "Clustering",
+        "Tableau"
+      ],
+      "constraints": [
+        "10K daily deliveries",
+        "Operational capacity and service-level constraints",
+        "Ambiguous requirements"
+      ]
+    },
+    "tags": {
+      "skills": [
+        "Optimization",
+        "Vehicle Routing",
+        "Clustering",
+        "KPI Monitoring",
+        "Performance Evaluation"
+      ],
+      "domains": [
+        "Logistics",
+        "Supply Chain"
+      ],
+      "work_type": [
+        "Optimization Modeling",
+        "Operational Analytics"
+      ],
+      "interaction_type": [
+        "Operations Team",
+        "Cross-functional"
+      ]
+    }
+  },
+  {
+    "project_id": "swat_workflow_automation_monitoring",
+    "title": "Automated Operational Monitoring and Slack Alerting System",
+    "company": "SWAT Mobility",
+    "timeframe": "Nov 2023 - Dec 2025",
+    "example_bullets": [
+      "Implemented an AI-driven automation system using Python and APIs to create a real-time Slack alert and monitoring solution, integrating data validation checks and eliminating 4 hours of daily manual operational effort.",
+      "Developed automated workflows and a Python/Windmill-powered Slack alert system for real-time KPI tracking and data-validation checks, creating digital solutions that eliminated 4 hours of daily manual monitoring effort.",
+      "Developed an automated operational monitoring and Slack alerting system using Python and Windmill, delivering real-time KPI tracking and data-validation checks, which streamlined data initiatives and eliminated 4 hours of daily manual effort.",
+      "Created an automated daily IT workflow using the workflow automation platform (Python/Windmill) to deliver instant task status, performance metrics, and data-validation alerts, reducing support time from 4 hours to real time."
+    ],
+    "core": {
+      "problem": "Manual monitoring and support workflows required up to 4 hours of effort and lacked real-time visibility.",
+      "actions": [
+        "Developed automated workflows using Python and Windmill",
+        "Built a Slack bot to deliver real-time task status and performance metrics",
+        "Implemented automated data-validation alerts",
+        "Automated daily IT workflow reporting"
+      ],
+      "outputs": [
+        "Real-time Slack alert system",
+        "Automated operational monitoring workflows"
+      ],
+      "results": [
+        "Reduced support effort from 4 hours to real time"
+      ],
+      "tools": [
+        "Python",
+        "Windmill",
+        "Slack"
+      ],
+      "constraints": [
+        "Need for real-time monitoring",
+        "Integration with existing operational systems"
+      ]
+    },
+    "tags": {
+      "skills": [
+        "Automation",
+        "Workflow Engineering",
+        "Monitoring",
+        "Data Validation"
+      ],
+      "domains": [
+        "Logistics",
+        "Operations"
+      ],
+      "work_type": [
+        "Internal Tooling",
+        "Process Automation"
+      ],
+      "interaction_type": [
+        "Internal Stakeholders"
+      ]
+    }
+  }
+]

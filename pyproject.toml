@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "resume-customization-workflow"
+version = "0.1.0"
+description = "Generate resume bullets from JD and project JSON via LiteLLM + Vertex AI"
+requires-python = ">=3.10"
+dependencies = [
+    "litellm>=1.30.0",
+    "google-cloud-aiplatform>=1.40.0",
+    "streamlit>=1.38.0",
+]
+
+[project.scripts]
+resume-bullets = "main_code.resume_bullet_workflow:main"
+build-resume = "main_code.build_resume:main"
+
+[tool.hatch.build.targets.wheel]
+
+[tool.hatch.build.targets.wheel.force-include]
+"main_code/resume_bullet_workflow.py" = "main_code/resume_bullet_workflow.py"
+"main_code/build_resume.py" = "main_code/build_resume.py"
+"main_code/app.py" = "main_code/app.py"
