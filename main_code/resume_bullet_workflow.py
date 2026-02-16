@@ -1,10 +1,11 @@
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Sequence, Tuple
 
 import litellm
 
@@ -20,6 +21,17 @@ CHARS_PER_TOKEN = 4
 THINKING_MULTIPLIER = 10
 TOKEN_BUFFER = 1000
 MIN_MAX_TOKENS = 4000
+DEFAULT_TOP_COURSE_COUNT = 4
+DEFAULT_COLUMBIA_COURSES = [
+    "Applied machine learning",
+    "Optimization models",
+    "Analytics on the cloud (Spark)",
+    "Business analytics",
+    "Operations strategy",
+    "Stochastic models",
+    "Project management",
+    "Agentic AI",
+]
 
 
 def parse_filename(project_file: Path) -> Tuple[str, int, int]:
@@ -150,6 +162,199 @@ def extract_jd_signals(jd_text: str, model: str) -> Dict[str, Any]:
 
     return signals
 
+
+def _normalize_course_name(value: str) -> str:
+    return re.sub(r"\s+", " ", value.strip().lower())
+
+
+def _extract_selected_courses_from_raw(
+    raw_output: str,
+    course_pool: Sequence[str],
+) -> List[str]:
+    cleaned = raw_output.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```\w*\n?", "", cleaned)
+        cleaned = re.sub(r"\n?```$", "", cleaned)
+
+    candidates: List[str] = []
+    try:
+        payload = json.loads(cleaned)
+        if isinstance(payload, list):
+            candidates = [str(item).strip() for item in payload]
+        elif isinstance(payload, dict):
+            for key in ("selected_courses", "courses", "top_courses"):
+                value = payload.get(key)
+                if isinstance(value, list):
+                    candidates = [str(item).strip() for item in value]
+                    break
+    except json.JSONDecodeError:
+        pass
+
+    if not candidates:
+        for line in cleaned.splitlines():
+            item = re.sub(r"^\s*(?:\d+[.)-]?|[-*])\s*", "", line).strip()
+            if item:
+                candidates.append(item)
+
+    canonical_by_name = {
+        _normalize_course_name(course): course for course in course_pool
+    }
+    selected: List[str] = []
+    for candidate in candidates:
+        normalized = _normalize_course_name(candidate)
+        matched = canonical_by_name.get(normalized)
+        if not matched:
+            for normalized_course, original in canonical_by_name.items():
+                if normalized and (
+                    normalized in normalized_course or normalized_course in normalized
+                ):
+                    matched = original
+                    break
+        if matched and matched not in selected:
+            selected.append(matched)
+
+    return selected
+
+
+def _fallback_rank_courses(
+    jd_text: str,
+    course_pool: Sequence[str],
+    top_k: int,
+) -> List[str]:
+    jd_lower = jd_text.lower()
+    keyword_hints: Dict[str, List[str]] = {
+        "Applied machine learning": [
+            "machine learning",
+            "ml",
+            "model",
+            "predictive",
+            "classification",
+            "regression",
+            "deep learning",
+            "nlp",
+            "llm",
+        ],
+        "Optimization models": [
+            "optimization",
+            "optimize",
+            "linear programming",
+            "integer programming",
+            "solver",
+            "objective",
+            "constraints",
+        ],
+        "Analytics on the cloud (Spark)": [
+            "spark",
+            "cloud",
+            "distributed",
+            "databricks",
+            "big data",
+            "pyspark",
+            "etl",
+        ],
+        "Business analytics": [
+            "analytics",
+            "dashboard",
+            "kpi",
+            "insight",
+            "business",
+            "metrics",
+        ],
+        "Operations strategy": [
+            "operations",
+            "strategy",
+            "process improvement",
+            "supply chain",
+            "efficiency",
+            "planning",
+        ],
+        "Stochastic models": [
+            "stochastic",
+            "probability",
+            "random",
+            "uncertainty",
+            "monte carlo",
+            "markov",
+        ],
+        "Project management": [
+            "project management",
+            "stakeholder",
+            "timeline",
+            "delivery",
+            "cross-functional",
+            "roadmap",
+        ],
+        "Agentic AI": [
+            "agentic",
+            "agents",
+            "autonomous",
+            "tool use",
+            "orchestration",
+            "llm agents",
+        ],
+    }
+
+    scored: List[Tuple[int, int, str]] = []
+    for idx, course in enumerate(course_pool):
+        score = 0
+        for keyword in keyword_hints.get(course, []):
+            if keyword in jd_lower:
+                score += 2 if " " in keyword else 1
+        scored.append((score, idx, course))
+
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    ranked = [course for _, _, course in scored]
+    if all(score == 0 for score, _, _ in scored):
+        ranked = list(course_pool)
+    return ranked[:top_k]
+
+
+def select_top_courses_for_jd(
+    jd_text: str,
+    model: str,
+    courses: Sequence[str] | None = None,
+    top_k: int = DEFAULT_TOP_COURSE_COUNT,
+) -> List[str]:
+    course_pool = list(courses) if courses else list(DEFAULT_COLUMBIA_COURSES)
+    if not course_pool:
+        return []
+    top_k = max(1, min(top_k, len(course_pool)))
+
+    system_prompt = (
+        "You are a precise course-matching assistant. "
+        "Choose the most job-relevant courses from the provided list only. "
+        "Return ONLY valid JSON with no extra text."
+    )
+    user_prompt = {
+        "task": "Select the top job-relevant courses for this job description.",
+        "selection_rules": [
+            f"Select exactly {top_k} course names.",
+            "Use only names from the provided course list.",
+            "Prioritize direct technical and domain fit to the JD requirements.",
+            "Do not invent or rename courses.",
+        ],
+        "output_schema": {"selected_courses": [f"exactly {top_k} course names"]},
+        "courses": course_pool,
+        "job_description": jd_text,
+    }
+
+    try:
+        raw = call_vertex_litellm(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": json.dumps(user_prompt, ensure_ascii=True)},
+            ],
+            temperature=0.0,
+            max_tokens=600,
+        )
+        selected = _extract_selected_courses_from_raw(raw, course_pool)
+    except Exception:
+        selected = []
+
+    fallback = _fallback_rank_courses(jd_text=jd_text, course_pool=course_pool, top_k=top_k)
+    merged = selected + [course for course in fallback if course not in selected]
+    return merged[:top_k]
 
 
 def extract_numbered_bullets(text: str) -> List[str]:
@@ -309,12 +514,21 @@ def generate_bullets(
             ],
             "already_used_verbs": used_verbs or [],
             "tailoring": (
-                "actively reframe existing work using JD keywords and terminology "
-                "for ATS relevance. Prefer JD-aligned synonyms when describing skills, "
-                "methods, and outcomes. Each keyword must fit the sentence coherently — "
-                "do not insert terms that misrepresent the work or break the logical flow."
+                "Align phrasing with the job description's required skills and "
+                "terminology when supported by the evidence, but preserve "
+                "domain-specific and technical nouns from the evidence (e.g., "
+                "mobility patterns, GPS trajectories, geospatial trends, route "
+                "bottlenecks, planning anomalies). Avoid replacing specific "
+                "concepts with generic corporate abstractions (e.g., business "
+                "operations, operational excellence, key insights). Do not insert "
+                "JD keywords unless they are logically justified by the evidence."
             ),
-            "bullet_order": "order bullets from most JD-relevant to least JD-relevant",
+            "style_guardrails": [
+                "Prefer concrete technical/domain language over vague business phrasing.",
+                "Avoid filler adjectives and corporate cliches unless present in the evidence.",
+                "Use specific objects (what data/system) + specific method (how) + specific outcome (impact).",
+            ],
+            "bullet_order": "Prioritize bullets that align most directly with the core technical requirements of the job description, followed by supporting or secondary responsibilities.",
             "no_duplicates": True,
             "no_fabrication": "stay grounded in evidence but paraphrase freely",
             "output_rule": "Return only numbered bullets. No extra text.",
@@ -458,12 +672,21 @@ def generate_all_bullets(
                 "spread tools across bullets so each highlights different skills",
             ],
             "tailoring": (
-                "actively reframe existing work using JD keywords and terminology "
-                "for ATS relevance. Prefer JD-aligned synonyms when describing skills, "
-                "methods, and outcomes. Each keyword must fit the sentence coherently — "
-                "do not insert terms that misrepresent the work or break the logical flow."
+                "Align phrasing with the job description's required skills and "
+                "terminology when supported by the evidence, but preserve "
+                "domain-specific and technical nouns from the evidence (e.g., "
+                "mobility patterns, GPS trajectories, geospatial trends, route "
+                "bottlenecks, planning anomalies). Avoid replacing specific "
+                "concepts with generic corporate abstractions (e.g., business "
+                "operations, operational excellence, key insights). Do not insert "
+                "JD keywords unless they are logically justified by the evidence."
             ),
-            "bullet_order": "within each company, order bullets from most JD-relevant to least",
+            "style_guardrails": [
+                "Prefer concrete technical/domain language over vague business phrasing.",
+                "Avoid filler adjectives and corporate cliches unless present in the evidence.",
+                "Use specific objects (what data/system) + specific method (how) + specific outcome (impact).",
+            ],
+            "bullet_order": "within each company, Prioritize bullets that align most directly with the core technical requirements of the job description, followed by supporting or secondary responsibilities.",
             "no_duplicates": True,
             "no_fabrication": "stay grounded in evidence but paraphrase freely",
         },
@@ -542,6 +765,29 @@ def run_all(jd_path: Path, directory: Path, model: str, log_prompts: bool) -> Di
     return results
 
 
+def run_all_with_course_selection(
+    jd_path: Path,
+    directory: Path,
+    model: str,
+    log_prompts: bool,
+    courses: Sequence[str] | None = None,
+    top_k: int = DEFAULT_TOP_COURSE_COUNT,
+) -> Tuple[Dict[str, List[str]], List[str]]:
+    jd_text = read_jd(jd_path)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        bullets_future = executor.submit(run_all, jd_path, directory, model, log_prompts)
+        courses_future = executor.submit(
+            select_top_courses_for_jd,
+            jd_text,
+            model,
+            courses,
+            top_k,
+        )
+        bullets = bullets_future.result()
+        selected_courses = courses_future.result()
+    return bullets, selected_courses
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Generate resume bullets using Vertex AI via LiteLLM."
@@ -563,6 +809,11 @@ def main() -> int:
         action="store_true",
         help="Run all work_*.json files in the JD directory and output JSON.",
     )
+    group.add_argument(
+        "--top-courses-only",
+        action="store_true",
+        help="Return only the top JD-relevant course names.",
+    )
     parser.add_argument(
         "--model",
         type=str,
@@ -574,10 +825,31 @@ def main() -> int:
         action="store_true",
         help="Write system/user prompts to temporary log files.",
     )
+    parser.add_argument(
+        "--courses",
+        nargs="*",
+        default=DEFAULT_COLUMBIA_COURSES,
+        help="Course names to rank for JD relevance (default: built-in Columbia list).",
+    )
+    parser.add_argument(
+        "--top-k-courses",
+        type=int,
+        default=DEFAULT_TOP_COURSE_COUNT,
+        help=f"Number of courses to return (default: {DEFAULT_TOP_COURSE_COUNT}).",
+    )
     args = parser.parse_args()
 
     try:
-        if args.all:
+        if args.top_courses_only:
+            jd_text = read_jd(args.jd)
+            selected_courses = select_top_courses_for_jd(
+                jd_text=jd_text,
+                model=args.model,
+                courses=args.courses,
+                top_k=args.top_k_courses,
+            )
+            print(json.dumps(selected_courses, indent=2, ensure_ascii=False))
+        elif args.all:
             directory = args.jd.parent
             results = run_all(
                 jd_path=args.jd,

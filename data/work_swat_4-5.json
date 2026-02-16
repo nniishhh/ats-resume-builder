@@ -186,25 +186,24 @@
     "company": "SWAT Mobility",
     "timeframe": "Nov 2023 - Dec 2025",
     "example_bullets": [
-      "Implemented an AI-driven automation system using Python and APIs to create a real-time Slack alert and monitoring solution, integrating data validation checks and eliminating 4 hours of daily manual operational effort.",
-      "Developed automated workflows and a Python/Windmill-powered Slack alert system for real-time KPI tracking and data-validation checks, creating digital solutions that eliminated 4 hours of daily manual monitoring effort.",
-      "Developed an automated operational monitoring and Slack alerting system using Python and Windmill, delivering real-time KPI tracking and data-validation checks, which streamlined data initiatives and eliminated 4 hours of daily manual effort.",
-      "Created an automated daily IT workflow using the workflow automation platform (Python/Windmill) to deliver instant task status, performance metrics, and data-validation alerts, reducing support time from 4 hours to real time."
+      "Architected a Python/Windmill-based operational monitoring system with Slack-integrated KPI alerts and automated data validation checks, eliminating 4 hours of daily manual investigation effort.",
+      "Designed a proactive performance reporting framework that centralized daily planning metrics in Slack, accelerating cross-team issue triage and reducing reactive escalation workload by 4 hours per day."
     ],
     "core": {
-      "problem": "Manual monitoring and support workflows required up to 4 hours of effort and lacked real-time visibility.",
+      "problem": "Client-reported system performance issues required reactive investigation, with customer support and engineers manually coordinating root-cause analysis, consuming ~4 hours daily and delaying response time.",
       "actions": [
-        "Developed automated workflows using Python and Windmill",
-        "Built a Slack bot to deliver real-time task status and performance metrics",
-        "Implemented automated data-validation alerts",
-        "Automated daily IT workflow reporting"
+        "Architected automated operational monitoring workflows using Python and Windmill",
+        "Designed a Slack-based alerting system to surface daily planning performance metrics in real time",
+        "Implemented rule-based data validation checks to proactively detect system anomalies",
+        "Automated daily planning performance reporting to increase cross-team transparency"
       ],
       "outputs": [
-        "Real-time Slack alert system",
-        "Automated operational monitoring workflows"
+        "Real-time Slack monitoring and alert system",
+        "Automated daily performance reporting for planning operations"
       ],
       "results": [
-        "Reduced support effort from 4 hours to real time"
+        "Reduced reactive support workload by 4 hours daily",
+        "Improved issue detection speed through proactive KPI visibility"
       ],
       "tools": [
         "Python",

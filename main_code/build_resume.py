@@ -14,10 +14,16 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+# When run as `python main_code/build_resume.py`, ensure imports resolve to
+# the local project source (repo root), not an older installed package copy.
+if __package__ in (None, ""):
+    repo_root = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(repo_root))
+
 from main_code.resume_bullet_workflow import (
     DEFAULT_MODEL,
     extract_jd_signals,
-    run_all,
+    run_all_with_course_selection,
 )
 
 
@@ -199,6 +205,48 @@ def replace_experience_bullets(
     return "\n".join(result)
 
 
+def replace_columbia_coursework(tex_content: str, courses: List[str]) -> str:
+    """Replace the Columbia coursework list in the Education section."""
+    if not courses:
+        return tex_content
+
+    escaped_courses = [escape_latex(course) for course in courses if course.strip()]
+    if not escaped_courses:
+        return tex_content
+    coursework_text = ", ".join(escaped_courses)
+
+    columbia_anchor = r"\textbf{Columbia University}"
+    start_idx = tex_content.find(columbia_anchor)
+    if start_idx == -1:
+        print(
+            "[warning] Columbia section not found; coursework replacement skipped.",
+            file=sys.stderr,
+        )
+        return tex_content
+
+    next_section_idx = tex_content.find(r"\section{", start_idx + 1)
+    end_idx = next_section_idx if next_section_idx != -1 else len(tex_content)
+    section = tex_content[start_idx:end_idx]
+
+    def _replace_coursework(match: re.Match[str]) -> str:
+        return f"{match.group(1)}{coursework_text}"
+
+    updated_section, changed = re.subn(
+        r"(Coursework:\s*)([^\n]+)",
+        _replace_coursework,
+        section,
+        count=1,
+    )
+    if changed == 0:
+        print(
+            "[warning] Coursework field not found in Columbia section; replacement skipped.",
+            file=sys.stderr,
+        )
+        return tex_content
+
+    return tex_content[:start_idx] + updated_section + tex_content[end_idx:]
+
+
 def tighten_spacing(tex: str) -> str:
     """Adjust spacing and typesetting for generated resumes.
 
@@ -318,8 +366,8 @@ def build_resume(
         file=sys.stderr,
     )
 
-    # 2. Generate bullets for all companies
-    bullets = run_all(
+    # 2. Generate bullets and top JD-relevant coursework in parallel
+    bullets, selected_courses = run_all_with_course_selection(
         jd_path=jd_path,
         directory=jd_path.parent,
         model=model,
@@ -330,10 +378,15 @@ def build_resume(
         f"{list(bullets.keys())}",
         file=sys.stderr,
     )
+    print(
+        f"[info] Selected Columbia coursework: {selected_courses}",
+        file=sys.stderr,
+    )
 
-    # 3. Read template and replace bullets
+    # 3. Read template and replace bullets/coursework
     tex_content = template_path.read_text(encoding="utf-8")
     new_tex = replace_experience_bullets(tex_content, bullets)
+    new_tex = replace_columbia_coursework(new_tex, selected_courses)
 
     # 3b. Tighten spacing so longer generated bullets still fit one page
     new_tex = tighten_spacing(new_tex)

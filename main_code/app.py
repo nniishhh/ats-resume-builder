@@ -13,6 +13,7 @@ import streamlit as st
 from main_code.build_resume import (
     compile_to_pdf,
     cleanup_aux_files,
+    replace_columbia_coursework,
     replace_experience_bullets,
     slugify,
     tighten_spacing,
@@ -22,7 +23,8 @@ from main_code.resume_bullet_workflow import (
     MIN_BULLET_CHARS,
     MAX_BULLET_CHARS,
     parse_filename,
-    run_all,
+    run_all_with_course_selection,
+    select_top_courses_for_jd,
 )
 
 WORK_DIR = Path(os.getenv("RESUME_WORK_DIR", ".")).resolve()
@@ -283,15 +285,17 @@ def main() -> None:
 
         try:
             with st.spinner("Analyzing JD and generating bullets — this takes ~30 s ..."):
-                bullets = run_all(
+                bullets, selected_courses = run_all_with_course_selection(
                     jd_path=jd_path,
                     directory=DATA_DIR,
                     model=model,
                     log_prompts=log_prompts,
                 )
             st.session_state.bullets = bullets
+            st.session_state.selected_courses = selected_courses
             st.session_state.company_name = company_name.strip()
             st.session_state.position_name = position_name.strip()
+            st.session_state.jd_text = jd_text.strip()
             # Clear previous PDF so stale download button disappears
             st.session_state.pop("pdf_bytes", None)
             st.session_state.pop("tex_text", None)
@@ -308,6 +312,11 @@ def main() -> None:
 
     st.divider()
     st.header("3 — Review & Edit")
+    if "selected_courses" in st.session_state:
+        st.markdown("**Top 4 JD-Relevant Columbia Coursework**")
+        for course in st.session_state.selected_courses:
+            st.write(f"- {course}")
+
     edited_bullets = render_bullet_editor(st.session_state.bullets)
 
     st.divider()
@@ -318,6 +327,14 @@ def main() -> None:
             with st.spinner("Injecting bullets and compiling LaTeX ..."):
                 tex_content = template_path.read_text(encoding="utf-8")
                 new_tex = replace_experience_bullets(tex_content, edited_bullets)
+                selected_courses = st.session_state.get("selected_courses")
+                if not selected_courses:
+                    selected_courses = select_top_courses_for_jd(
+                        jd_text=jd_text.strip(),
+                        model=model,
+                    )
+                    st.session_state.selected_courses = selected_courses
+                new_tex = replace_columbia_coursework(new_tex, selected_courses)
                 new_tex = tighten_spacing(new_tex)
 
                 cname = st.session_state.company_name
