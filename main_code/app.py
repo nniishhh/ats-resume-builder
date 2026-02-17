@@ -26,7 +26,9 @@ from main_code.build_resume import (
     tighten_spacing,
 )
 from main_code.resume_bullet_workflow import (
+    DEFAULT_GENERATION_MODE,
     DEFAULT_MODEL,
+    GENERATION_MODES,
     MIN_BULLET_CHARS,
     MAX_BULLET_CHARS,
     parse_filename,
@@ -83,8 +85,8 @@ def check_password() -> bool:
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
 
-def render_sidebar(work_files: list[Path]) -> tuple[str, bool]:
-    """Render sidebar settings. Returns (model, log_prompts)."""
+def render_sidebar(work_files: list[Path]) -> tuple[str, bool, str]:
+    """Render sidebar settings. Returns (model, log_prompts, generation_mode)."""
     with st.sidebar:
         st.header("Settings")
         model = st.text_input(
@@ -93,6 +95,20 @@ def render_sidebar(work_files: list[Path]) -> tuple[str, bool]:
             help="LiteLLM model identifier (e.g. vertex_ai/gemini-2.5-flash)",
         )
         log_prompts = st.checkbox("Log prompts to disk", value=False)
+        generation_mode = st.selectbox(
+            "Generation Mode",
+            options=list(GENERATION_MODES),
+            index=list(GENERATION_MODES).index(DEFAULT_GENERATION_MODE),
+            format_func=lambda mode: (
+                "One Prompt (all companies JSON)"
+                if mode == "single_prompt"
+                else "Sequential (one company at a time)"
+            ),
+            help=(
+                "single_prompt: all companies in one model call. "
+                "sequential: generate one company at a time and avoid reusing starting verbs."
+            ),
+        )
 
         st.divider()
         st.subheader("Evidence Files")
@@ -114,7 +130,7 @@ def render_sidebar(work_files: list[Path]) -> tuple[str, bool]:
         else:
             st.error("data/main.tex not found.")
 
-    return model, log_prompts
+    return model, log_prompts, generation_mode
 
 
 # ── JD Input ──────────────────────────────────────────────────────────────────
@@ -260,7 +276,7 @@ def main() -> None:
     )
 
     work_files = sorted(DATA_DIR.glob("work_*_*-*.json"))
-    model, log_prompts = render_sidebar(work_files)
+    model, log_prompts, generation_mode = render_sidebar(work_files)
     template_path = DATA_DIR / "main.tex"
 
     # ── Step 1: JD ────────────────────────────────────────────────────────
@@ -299,6 +315,7 @@ def main() -> None:
                     directory=DATA_DIR,
                     model=model,
                     log_prompts=log_prompts,
+                    generation_mode=generation_mode,
                 )
             st.session_state.bullets = bullets
             st.session_state.selected_courses = selected_courses

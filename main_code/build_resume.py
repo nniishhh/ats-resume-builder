@@ -21,7 +21,9 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(repo_root))
 
 from main_code.resume_bullet_workflow import (
+    DEFAULT_GENERATION_MODE,
     DEFAULT_MODEL,
+    GENERATION_MODES,
     extract_jd_signals,
     run_all_with_course_selection,
 )
@@ -353,6 +355,7 @@ def build_resume(
     output_dir: Path,
     model: str,
     log_prompts: bool,
+    generation_mode: str = DEFAULT_GENERATION_MODE,
     no_compile: bool = False,
 ) -> Tuple[Path, Optional[Path]]:
     """End-to-end: generate bullets -> inject into TeX -> compile PDF.
@@ -372,6 +375,7 @@ def build_resume(
         directory=jd_path.parent,
         model=model,
         log_prompts=log_prompts,
+        generation_mode=generation_mode,
     )
     print(
         f"[info] Generated bullets for {len(bullets)} companies: "
@@ -450,6 +454,17 @@ def main() -> int:
         help="Write system/user prompts to output/prompt_logs/.",
     )
     parser.add_argument(
+        "--generation-mode",
+        type=str,
+        choices=list(GENERATION_MODES),
+        default=DEFAULT_GENERATION_MODE,
+        help=(
+            "How to generate bullets across companies: "
+            "'single_prompt' (all companies in one prompt) or "
+            "'sequential' (one company at a time with verb tracking)."
+        ),
+    )
+    parser.add_argument(
         "--no-compile",
         action="store_true",
         help="Skip PDF compilation (only produce the .tex file).",
@@ -466,6 +481,7 @@ def main() -> int:
             output_dir=output_dir,
             model=args.model,
             log_prompts=args.log_prompts,
+            generation_mode=args.generation_mode,
             no_compile=args.no_compile,
         )
         print(f"\nResume ready:")

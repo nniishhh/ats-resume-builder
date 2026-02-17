@@ -5,7 +5,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Sequence, Tuple
+from typing import Any, Dict, List, Literal, Sequence, Tuple
 
 import litellm
 
@@ -13,9 +13,9 @@ import litellm
 FILENAME_PATTERN = re.compile(
     r"^work_(?P<company>.+)_(?P<min_bullets>\d+)-(?P<max_bullets>\d+)\.json$"
 )
-DEFAULT_MODEL = "vertex_ai/gemini-3-pro"
+DEFAULT_MODEL = "vertex_ai/gemini-3-pro-preview"
 MIN_BULLET_CHARS = 190
-MAX_BULLET_CHARS = 240
+MAX_BULLET_CHARS = 230
 MAX_GENERATION_ATTEMPTS = 2
 CHARS_PER_TOKEN = 4
 THINKING_MULTIPLIER = 10
@@ -32,6 +32,15 @@ DEFAULT_COLUMBIA_COURSES = [
     "Project management",
     "Agentic AI",
 ]
+GENERATION_MODES: Tuple[Literal["single_prompt", "sequential"], ...] = (
+    "single_prompt",
+    "sequential",
+)
+DEFAULT_GENERATION_MODE: Literal["single_prompt", "sequential"] = "sequential"
+GLOBAL_VERTEX_PREVIEW_MODELS = {
+    "gemini-3-pro-preview",
+    "gemini-3-flash-preview",
+}
 
 
 def parse_filename(project_file: Path) -> Tuple[str, int, int]:
@@ -376,17 +385,41 @@ def extract_numbered_bullets(text: str) -> List[str]:
     return [bullet for bullet in bullets if bullet]
 
 
-def validate_bullets(bullets: List[str], min_bullets: int, max_bullets: int) -> List[str]:
+def extract_starting_verbs(bullets: Sequence[str]) -> List[str]:
+    verbs: List[str] = []
+    for bullet in bullets:
+        match = re.match(r"^\s*([A-Za-z]+)", bullet)
+        if not match:
+            continue
+        verb = match.group(1).lower()
+        if verb:
+            verbs.append(verb)
+    return verbs
+
+
+def validate_bullets(
+    bullets: List[str],
+    min_bullets: int,
+    max_bullets: int,
+    forbidden_verbs: Sequence[str] | None = None,
+) -> List[str]:
     issues: List[str] = []
     if len(bullets) < min_bullets or len(bullets) > max_bullets:
         issues.append(f"Bullet count must be between {min_bullets} and {max_bullets}.")
 
-    starts = []
-    for bullet in bullets:
-        first_word_match = re.match(r"^[A-Za-z]+", bullet)
-        starts.append(first_word_match.group(0).lower() if first_word_match else "")
+    starts = extract_starting_verbs(bullets)
     if len(starts) != len(set(starts)):
         issues.append("Starting action verbs must be unique across bullets.")
+    if forbidden_verbs:
+        forbidden = {verb.lower() for verb in forbidden_verbs}
+        repeated = [verb for verb in starts if verb in forbidden]
+        if repeated:
+            repeated_unique = sorted(set(repeated))
+            issues.append(
+                "Starting action verbs must not reuse previously used verbs: "
+                + ", ".join(repeated_unique)
+                + "."
+            )
 
     if len(set(bullets)) != len(bullets):
         issues.append("Bullets must not duplicate ideas.")
@@ -415,25 +448,69 @@ def canonize_numbered_list(bullets: List[str]) -> str:
     return "\n".join(f"{idx}. {bullet}" for idx, bullet in enumerate(bullets, start=1))
 
 
+def _normalize_vertex_model_name(model: str) -> str:
+    if model.startswith("vertex_ai/"):
+        return model.split("/", 1)[1].strip().lower()
+    return model.strip().lower()
+
+
+def _is_global_vertex_preview_model(model: str) -> bool:
+    return _normalize_vertex_model_name(model) in GLOBAL_VERTEX_PREVIEW_MODELS
+
+
+def _is_location_mismatch_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    location_terms = ("location", "region", "global")
+    failure_terms = (
+        "not found",
+        "unsupported",
+        "invalid",
+        "unavailable",
+        "access",
+        "permission",
+    )
+    return any(term in text for term in location_terms) and any(
+        term in text for term in failure_terms
+    )
+
+
 def call_vertex_litellm(
-    model: str, messages: List[Dict[str, str]], temperature: float = 0.3, max_tokens: int = 2048
+    model: str,
+    messages: List[Dict[str, str]],
+    temperature: float = 0.3,
+    max_tokens: int = 2048,
+    reasoning_effort: str = "high",
 ) -> str:
     vertex_project = os.getenv("VERTEXAI_PROJECT")
-    vertex_location = os.getenv("VERTEXAI_LOCATION")
-    if not vertex_project or not vertex_location:
+    vertex_location = os.getenv("VERTEXAI_LOCATION", "global")
+    if not vertex_project:
         raise EnvironmentError(
-            "Set VERTEXAI_PROJECT and VERTEXAI_LOCATION environment variables."
+            "Set VERTEXAI_PROJECT environment variable."
         )
 
-    response = litellm.completion(
-        model=model,
-        messages=messages,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        vertex_project=vertex_project,
-        vertex_location=vertex_location,
-        timeout=120,
-    )
+    request_kwargs = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "vertex_project": vertex_project,
+        "vertex_location": vertex_location,
+        "timeout": 150,
+        "reasoning_effort": reasoning_effort,
+    }
+
+    try:
+        response = litellm.completion(**request_kwargs)
+    except Exception as exc:
+        can_retry_global = (
+            vertex_location != "global"
+            and _is_global_vertex_preview_model(model)
+            and _is_location_mismatch_error(exc)
+        )
+        if not can_retry_global:
+            raise
+        request_kwargs["vertex_location"] = "global"
+        response = litellm.completion(**request_kwargs)
 
     return (
         response.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
@@ -472,75 +549,80 @@ def generate_bullets(
     tokens_per_bullet = (MAX_BULLET_CHARS // CHARS_PER_TOKEN) * THINKING_MULTIPLIER
     max_tokens = max(MIN_MAX_TOKENS, max_bullets * tokens_per_bullet + TOKEN_BUFFER)
 
-    system_prompt = (
-        "You write concise, ATS-optimized resume bullets. "
-        "Stay grounded in the provided JSON evidence — do not invent new metrics "
-        "or results. However, you SHOULD actively reframe work using keywords and "
-        "terminology from the job description to maximize ATS relevance. "
-        "Prefer JD-aligned synonyms and phrasing wherever the work genuinely "
-        "supports it. Every keyword must fit coherently into the sentence — "
-        "do not insert terms that misrepresent the work or that a reader cannot "
-        "logically connect to the described activity. "
-        "Paraphrase freely: use synonyms, vary vocabulary, and avoid echoing the "
-        "same terms within a bullet. Use concrete technical/domain nouns and avoid "
-        "generic corporate abstractions."
-    )
+    system_prompt = f"""You write concise, ATS-optimized resume bullets grounded strictly in the provided project evidence and job description.
+
+========================================
+OUTPUT CONTRACT (NON-NEGOTIABLE)
+========================================
+- Return ONLY a numbered list.
+- No markdown, commentary, explanations, or code fences.
+- Format: "1. First bullet\\n2. Second bullet"
+
+========================================
+HARD LENGTH RULE (NON-NEGOTIABLE)
+========================================
+- Each bullet MUST be between {MIN_BULLET_CHARS} and {MAX_BULLET_CHARS} characters (including spaces).
+- Bullets outside this range are invalid.
+
+========================================
+TRUTHFULNESS
+========================================
+- Do NOT invent metrics, tools, scope, stakeholders, or outcomes.
+- Every statement must be logically supported by the evidence.
+- You may paraphrase and reframe, but never fabricate.
+
+========================================
+ADAPTIVE FRAMING RULE
+========================================
+Let the job description determine what to emphasize and how to structure bullets.
+- If the JD emphasizes ownership, strategy, prioritization, or cross-functional delivery, structure bullets to highlight leadership, decisions, and business outcomes.
+- If the JD emphasizes technical execution, analytics, or modeling, structure bullets to highlight methods, systems, and measurable impact.
+Choose the most appropriate framing without adding unsupported details.
+
+========================================
+PROFESSIONAL ABSTRACTION
+========================================
+You may elevate specific implementations into accurate higher-level professional terminology when supported by evidence (e.g., "pipeline," "system," "AI","ML").
+Do NOT exaggerate beyond what the evidence supports.
+
+========================================
+JOB DESCRIPTION ALIGNMENT
+========================================
+- Use the JD to guide emphasis and terminology.
+- Prefer JD-aligned language only when it fits the evidence.
+- Do NOT force keywords that are not logically connected to the work.
+
+========================================
+BULLET ORDERING
+========================================
+- Order bullets by strongest alignment to the JD.
+- If relevance is similar, order by measurable impact and scale.
+
+========================================
+STYLE PRINCIPLES
+========================================
+- Prefer concrete nouns and outcomes over vague corporate phrasing.
+- Use strong, varied action verbs.
+- When a bullet includes a numeric or measurable result, you should place that result at the end of the sentence.
+- Avoid repetition."""
+
     user_prompt = {
-        "task": "Generate resume bullets from the evidence.",
-        "constraints": {
-            "company": company,
-            "min_bullets": min_bullets,
-            "max_bullets": max_bullets,
-            "format": "numbered list only",
-            "style": "professional resume tone",
-            "line_length": "1-2 lines per bullet",
-            "HARD_LIMIT_min_characters_per_bullet": MIN_BULLET_CHARS,
-            "HARD_LIMIT_max_characters_per_bullet": MAX_BULLET_CHARS,
-            "character_limit_note": (
-                f"This is a hard constraint. Every bullet must be {MIN_BULLET_CHARS}-"
-                f"{MAX_BULLET_CHARS} chars. Trim filler words to stay under the max."
-            ),
-            "structure": "strong action verb + method/skill + measurable impact if available",
-            "measurable_impact_rule": (
-                "each bullet should have measurable impact when available, "
-                "and if included it must be placed at the end of the sentence"
-            ),
-            "lexical_diversity": [
-                "do not repeat starting action verbs",
-                "vary sentence structure",
-                "avoid repetitive phrasing",
-                "paraphrase freely — do not repeat the same noun phrase within a bullet",
-                "avoid mentioning the same tool or language (e.g. Python, SQL) in every bullet — "
-                "spread tools across bullets so each highlights different skills",
-                "avoid generic corporate abstractions and keep domain nouns concrete",
-            ],
-            "already_used_verbs": used_verbs or [],
-            "tailoring": (
-                "Align phrasing with the job description's required skills and "
-                "terminology when supported by the evidence, but preserve "
-                "domain-specific and technical nouns from the evidence (e.g., "
-                "mobility patterns, GPS trajectories, geospatial trends, route "
-                "bottlenecks, planning anomalies). Avoid replacing specific "
-                "concepts with generic corporate abstractions (e.g., business "
-                "operations, operational excellence, key insights). Do not insert "
-                "JD keywords unless they are logically justified by the evidence. "
-                "If JD terminology is broad or non-technical, prioritize "
-                "domain-specific and role-appropriate best practices over generic "
-                "JD language."
-            ),
-            "style_guardrails": [
-                "Prefer concrete technical/domain language over vague business phrasing.",
-                "Avoid filler adjectives and corporate cliches unless present in the evidence.",
-                "Use specific objects (what data/system) + specific method (how) + specific outcome (impact).",
-            ],
-            "bullet_order": "Prioritize bullets that align most directly with the core technical requirements of the job description, followed by supporting or secondary responsibilities.",
-            "no_duplicates": True,
-            "no_fabrication": "stay grounded in evidence but paraphrase freely",
-            "output_rule": "Return only numbered bullets. No extra text.",
-        },
+        "task": f"Generate {min_bullets}-{max_bullets} resume bullets for {company}.",
+        "company": company,
+        "min_bullets": min_bullets,
+        "max_bullets": max_bullets,
         "jd_analysis": jd_signals,
         "job_description": jd_text,
         "project_evidence": projects,
+        "already_used_verbs": used_verbs or [],
+    }
+    # Minimal constraints for repair flow
+    repair_constraints = {
+        "company": company,
+        "min_bullets": min_bullets,
+        "max_bullets": max_bullets,
+        "HARD_LIMIT_min_characters_per_bullet": MIN_BULLET_CHARS,
+        "HARD_LIMIT_max_characters_per_bullet": MAX_BULLET_CHARS,
     }
     if log_prompts:
         log_path = write_prompt_log(
@@ -561,7 +643,12 @@ def generate_bullets(
         max_tokens=max_tokens,
     )
     candidate_bullets = extract_numbered_bullets(first_pass)
-    issues = validate_bullets(candidate_bullets, min_bullets, max_bullets)
+    issues = validate_bullets(
+        candidate_bullets,
+        min_bullets,
+        max_bullets,
+        forbidden_verbs=used_verbs,
+    )
     if not issues:
         return canonize_numbered_list(candidate_bullets)
 
@@ -575,7 +662,8 @@ def generate_bullets(
             "attempt": attempt,
             "issues": issues,
             "previous_output": latest_output,
-            "constraints": user_prompt["constraints"],
+            "constraints": repair_constraints,
+            "already_used_verbs": used_verbs or [],
             "project_evidence": projects,
             "output_rule": "Numbered list only. No explanations.",
         }
@@ -600,7 +688,12 @@ def generate_bullets(
             max_tokens=max_tokens,
         )
         candidate_bullets = extract_numbered_bullets(latest_output)
-        issues = validate_bullets(candidate_bullets, min_bullets, max_bullets)
+        issues = validate_bullets(
+            candidate_bullets,
+            min_bullets,
+            max_bullets,
+            forbidden_verbs=used_verbs,
+        )
         if not issues:
             return canonize_numbered_list(candidate_bullets)
 
@@ -627,23 +720,68 @@ def generate_all_bullets(
     tokens_per_bullet = (MAX_BULLET_CHARS // CHARS_PER_TOKEN) * THINKING_MULTIPLIER
     max_tokens = max(MIN_MAX_TOKENS, total_bullets * tokens_per_bullet + TOKEN_BUFFER)
 
-    system_prompt = (
-        "You write concise, ATS-optimized resume bullets. "
-        "Stay grounded in the provided JSON evidence — do not invent new metrics "
-        "or results. However, you SHOULD actively reframe work using keywords and "
-        "terminology from the job description to maximize ATS relevance. "
-        "Prefer JD-aligned synonyms and phrasing wherever the work genuinely "
-        "supports it. Every keyword must fit coherently into the sentence — "
-        "do not insert terms that misrepresent the work or that a reader cannot "
-        "logically connect to the described activity. "
-        "Paraphrase freely: use synonyms, vary vocabulary, and avoid echoing the "
-        "same terms within a bullet. Use concrete technical/domain nouns and avoid "
-        "generic corporate abstractions. "
-        f"CRITICAL LENGTH RULE: every bullet MUST be between {MIN_BULLET_CHARS} and "
-        f"{MAX_BULLET_CHARS} characters. Count carefully — bullets over {MAX_BULLET_CHARS} "
-        "characters will be rejected. "
-        "Return ONLY valid JSON with no extra text."
-    )
+    system_prompt = f"""You write concise, ATS-optimized resume bullets grounded strictly in the provided project evidence and job description.
+
+========================================
+OUTPUT CONTRACT (NON-NEGOTIABLE)
+========================================
+- Return ONLY valid JSON.
+- No markdown, commentary, explanations, or code fences.
+- JSON must be a single object:
+  - Keys = company names (strings)
+  - Values = arrays of bullet strings
+
+Example:
+{{"Company A": ["bullet 1", "bullet 2"]}}
+
+
+========================================
+HARD LENGTH RULE (NON-NEGOTIABLE)
+========================================
+- Each bullet MUST be between {MIN_BULLET_CHARS} and {MAX_BULLET_CHARS} characters (including spaces).
+- Bullets outside this range are invalid.
+
+========================================
+TRUTHFULNESS
+========================================
+- Do NOT invent metrics, tools, scope, stakeholders, or outcomes.
+- Every statement must be logically supported by the evidence.
+- You may paraphrase and reframe, but never fabricate.
+
+========================================
+ADAPTIVE FRAMING RULE
+========================================
+Let the job description determine what to emphasize and how to structure bullets.
+- If the JD emphasizes ownership, strategy, prioritization, or cross-functional delivery, structure bullets to highlight leadership, decisions, and business outcomes.
+- If the JD emphasizes technical execution, analytics, or modeling, structure bullets to highlight methods, systems, and measurable impact.
+Choose the most appropriate framing without adding unsupported details.
+
+========================================
+PROFESSIONAL ABSTRACTION
+========================================
+You may elevate specific implementations into accurate higher-level professional terminology when supported by evidence (e.g., "pipeline," "system," "AI","ML").
+Do NOT exaggerate beyond what the evidence supports.
+
+========================================
+JOB DESCRIPTION ALIGNMENT
+========================================
+- Use the JD to guide emphasis and terminology.
+- Prefer JD-aligned language only when it fits the evidence.
+- Do NOT force keywords that are not logically connected to the work.
+
+========================================
+BULLET ORDERING
+========================================
+- Within each company, order bullets by strongest alignment to the JD.
+- If relevance is similar, order by measurable impact and scale.
+
+========================================
+STYLE PRINCIPLES
+========================================
+- Prefer concrete nouns and outcomes over vague corporate phrasing.
+- Use strong, varied action verbs.
+- When a bullet includes a numeric or measurable result, you should place that result at the end of the sentence.
+- Avoid repetition within each company."""
 
     companies_spec = []
     for c in company_data:
@@ -656,55 +794,6 @@ def generate_all_bullets(
 
     user_prompt = {
         "task": "Generate resume bullets for ALL companies below in one JSON response.",
-        "output_format": {
-            "description": "JSON object where keys are company names and values are arrays of bullet strings.",
-            "example_structure": '{"company_a": ["bullet 1", "bullet 2"], "company_b": ["bullet 1"]}',
-        },
-        "constraints": {
-            "per_company_bullet_counts": "respect each company's min and max bullet count",
-            "format": "JSON only, no markdown fences, no explanation",
-            "style": "professional resume tone",
-            "HARD_LIMIT_min_characters_per_bullet": MIN_BULLET_CHARS,
-            "HARD_LIMIT_max_characters_per_bullet": MAX_BULLET_CHARS,
-            "character_limit_note": (
-                f"This is a hard constraint. Every bullet must be {MIN_BULLET_CHARS}-"
-                f"{MAX_BULLET_CHARS} chars. Trim filler words to stay under the max."
-            ),
-            "structure": "strong action verb + method/skill + measurable impact if available",
-            "measurable_impact_rule": (
-                "each bullet should have measurable impact when available, "
-                "and if included it must be placed at the end of the sentence"
-            ),
-            "lexical_diversity": [
-                "every bullet across ALL companies must start with a unique action verb",
-                "vary sentence structure",
-                "avoid repetitive phrasing across the entire output",
-                "paraphrase freely — do not repeat the same noun phrase within a bullet",
-                "spread tools across bullets so each highlights different skills",
-                "avoid generic corporate abstractions and keep domain nouns concrete",
-            ],
-            "tailoring": (
-                "Align phrasing with the job description's required skills and "
-                "terminology when supported by the evidence, but preserve "
-                "domain-specific and technical nouns from the evidence (e.g., "
-                "mobility patterns, GPS trajectories, geospatial trends, route "
-                "bottlenecks, planning anomalies). Avoid replacing specific "
-                "concepts with generic corporate abstractions (e.g., business "
-                "operations, operational excellence, key insights). Do not insert "
-                "JD keywords unless they are logically justified by the evidence. "
-                "If JD terminology is broad or non-technical, prioritize "
-                "domain-specific and role-appropriate best practices over generic "
-                "JD language."
-            ),
-            "style_guardrails": [
-                "Prefer concrete technical/domain language over vague business phrasing.",
-                "Avoid filler adjectives and corporate cliches unless present in the evidence.",
-                "Use specific objects (what data/system) + specific method (how) + specific outcome (impact).",
-            ],
-            "bullet_order": "within each company, Prioritize bullets that align most directly with the core technical requirements of the job description, followed by supporting or secondary responsibilities.",
-            "no_duplicates": True,
-            "no_fabrication": "stay grounded in evidence but paraphrase freely",
-        },
         "jd_analysis": jd_signals,
         "job_description": jd_text,
         "companies": companies_spec,
@@ -741,27 +830,69 @@ def generate_all_bullets(
     return results
 
 
-def run_all(jd_path: Path, directory: Path, model: str, log_prompts: bool) -> Dict[str, List[str]]:
+def run_all(
+    jd_path: Path,
+    directory: Path,
+    model: str,
+    log_prompts: bool,
+    generation_mode: Literal["single_prompt", "sequential"] = DEFAULT_GENERATION_MODE,
+) -> Dict[str, List[str]]:
     jd_text = read_jd(jd_path)
     project_files = sorted(directory.glob("work_*_*-*.json"))
     if not project_files:
         raise FileNotFoundError(f"No work_*_<min>-<max>.json files found in {directory}")
 
-    # Use the per-company generation path to get the same validation/repair behavior
-    # as `--project-file`, which tends to produce higher quality outputs.
-    results: Dict[str, List[str]] = {}
-    used_verbs: List[str] = []
+    if generation_mode not in GENERATION_MODES:
+        raise ValueError(
+            f"Invalid generation_mode '{generation_mode}'. "
+            f"Expected one of: {', '.join(GENERATION_MODES)}."
+        )
 
+    company_data: List[Dict[str, Any]] = []
     for project_file in project_files:
         company, min_b, max_b = parse_filename(project_file)
         projects = read_projects(project_file)
+        company_data.append({
+            "company": company,
+            "min_bullets": min_b,
+            "max_bullets": max_b,
+            "projects": projects,
+            "project_file": project_file,
+        })
         print(
             f"[info] Loaded {project_file.name} ({company}, {min_b}-{max_b} bullets)",
             file=sys.stderr,
         )
-        print(f"[info] Generating bullets for {company} ...", file=sys.stderr)
 
-        numbered_output = generate_bullets(
+    if generation_mode == "single_prompt":
+        print("[info] Generation mode: single_prompt", file=sys.stderr)
+        print("[info] Generating all bullets in one call ...", file=sys.stderr)
+        generate_input = [
+            {
+                "company": c["company"],
+                "min_bullets": c["min_bullets"],
+                "max_bullets": c["max_bullets"],
+                "projects": c["projects"],
+            }
+            for c in company_data
+        ]
+        return generate_all_bullets(
+            jd_text=jd_text,
+            company_data=generate_input,
+            model=model,
+            log_prompts=log_prompts,
+        )
+
+    print("[info] Generation mode: sequential", file=sys.stderr)
+    results: Dict[str, List[str]] = {}
+    used_verbs: List[str] = []
+
+    for c in company_data:
+        company = c["company"]
+        project_file = c["project_file"]
+        projects = c["projects"]
+        print(f"[info] Generating bullets for {company} ...", file=sys.stderr)
+        output = generate_bullets(
             jd_text=jd_text,
             project_file=project_file,
             projects=projects,
@@ -769,13 +900,18 @@ def run_all(jd_path: Path, directory: Path, model: str, log_prompts: bool) -> Di
             log_prompts=log_prompts,
             used_verbs=used_verbs,
         )
-        company_bullets = extract_numbered_bullets(numbered_output)
+        company_bullets = extract_numbered_bullets(output)
         results[company] = company_bullets
 
-        # Carry forward used starting verbs to reduce repetition across companies.
-        for bullet in company_bullets:
-            if bullet:
-                used_verbs.append(bullet.split()[0].rstrip(",.;:").lower())
+        company_verbs = extract_starting_verbs(company_bullets)
+        for verb in company_verbs:
+            if verb not in used_verbs:
+                used_verbs.append(verb)
+
+        print(
+            f"[info] {company} done. Tracked starting verbs: {used_verbs}",
+            file=sys.stderr,
+        )
 
     return results
 
@@ -785,12 +921,20 @@ def run_all_with_course_selection(
     directory: Path,
     model: str,
     log_prompts: bool,
+    generation_mode: Literal["single_prompt", "sequential"] = DEFAULT_GENERATION_MODE,
     courses: Sequence[str] | None = None,
     top_k: int = DEFAULT_TOP_COURSE_COUNT,
 ) -> Tuple[Dict[str, List[str]], List[str]]:
     jd_text = read_jd(jd_path)
     with ThreadPoolExecutor(max_workers=2) as executor:
-        bullets_future = executor.submit(run_all, jd_path, directory, model, log_prompts)
+        bullets_future = executor.submit(
+            run_all,
+            jd_path,
+            directory,
+            model,
+            log_prompts,
+            generation_mode,
+        )
         courses_future = executor.submit(
             select_top_courses_for_jd,
             jd_text,
@@ -841,6 +985,17 @@ def main() -> int:
         help="Write system/user prompts to temporary log files.",
     )
     parser.add_argument(
+        "--generation-mode",
+        type=str,
+        choices=list(GENERATION_MODES),
+        default=DEFAULT_GENERATION_MODE,
+        help=(
+            "How to generate bullets for --all: "
+            "'single_prompt' (all companies in one prompt) or "
+            "'sequential' (one company at a time with verb tracking)."
+        ),
+    )
+    parser.add_argument(
         "--courses",
         nargs="*",
         default=DEFAULT_COLUMBIA_COURSES,
@@ -871,6 +1026,7 @@ def main() -> int:
                 directory=directory,
                 model=args.model,
                 log_prompts=args.log_prompts,
+                generation_mode=args.generation_mode,
             )
             print(json.dumps(results, indent=2, ensure_ascii=False))
         else:
