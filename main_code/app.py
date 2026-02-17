@@ -92,7 +92,7 @@ def render_sidebar(work_files: list[Path]) -> tuple[str, bool, str]:
         model = st.text_input(
             "LLM Model",
             value=os.getenv("LITELLM_MODEL", DEFAULT_MODEL),
-            help="LiteLLM model identifier (e.g. vertex_ai/gemini-2.5-flash)",
+            help="LiteLLM model identifier (e.g. vertex_ai/gemini-3-pro-preview)",
         )
         log_prompts = st.checkbox("Log prompts to disk", value=False)
         generation_mode = st.selectbox(

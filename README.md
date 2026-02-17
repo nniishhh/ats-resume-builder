@@ -102,20 +102,21 @@ AI-powered workflow that generates tailored, ATS-optimized resume bullets from j
 ```bash
 uv sync
 export VERTEXAI_PROJECT="your-project"
-export VERTEXAI_LOCATION="us-central1"
+# Optional (defaults to "global" in code)
+export VERTEXAI_LOCATION="global"
 ```
 
 ### Generate Resume
 
 ```bash
-# Full pipeline (bullets → TeX → PDF)
-uv run build-resume --log-prompts
-
-# Generate bullets only (all companies)
-uv run resume-bullets --all --jd data/JD.txt
-
 # Generate bullets for one company
-uv run resume-bullets --project-file data/work_agoda_2-2.json --jd data/JD.txt
+uv run resume-bullets --jd data/JD.txt --project-file data/work_agoda_2-2.json
+
+# Generate bullets for all companies (sequential mode)
+uv run resume-bullets --jd data/JD.txt --all --generation-mode sequential
+
+# Full pipeline (bullets → TeX → PDF)
+uv run build-resume --jd data/JD.txt --generation-mode sequential --log-prompts
 ```
 
 ### Streamlit UI
@@ -126,7 +127,9 @@ uv run streamlit run main_code/app.py
 
 ## Configuration
 
-- **Model**: Defaults to `vertex_ai/gemini-2.5-pro` (configurable via `--model` or `LITELLM_MODEL`)
-- **Bullet Length**: 190-220 characters (hard constraint)
+- **Model**: Defaults to `vertex_ai/gemini-3-pro-preview` (configurable via `--model` or `LITELLM_MODEL`)
+- **Vertex Location**: Defaults to `global` if `VERTEXAI_LOCATION` is unset
+- **Bullet Length**: 190-230 characters (hard constraint)
 - **Max Repair Attempts**: 2 per company
+- **Generation Mode**: `sequential` by default (`single_prompt` also available)
 - **Output Directory**: `output/` (configurable via `--output-dir`)
