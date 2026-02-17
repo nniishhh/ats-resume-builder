@@ -62,46 +62,49 @@
     "company": "Shopee",
     "timeframe": "May 2022 - Aug 2022",
     "example_bullets": [
-      "Automated merchant pricing exception reviews by developing a data-driven evaluation framework using Python and SQL for robust data processing and analysis, reducing decision turnaround from 7 days to 1 day.",
-      "Designed a data-driven decision framework for merchant pricing exceptions, automating eligibility evaluation with Python and SQL to enhance Business Operations and operational excellence, reducing review turnaround time from 7 days to 1 day.",
-      "Developed an automated pricing evaluation framework to assess merchant eligibility for special gross-margin rates; replaced manual reviews with data-driven logic, slashing decision turnaround from 7 days to 1 day."
+      "Implemented a Python + SQL evaluation pipeline to standardize merchant pricing exception checks and generated Excel visualizations benchmarking merchant scores versus target GMR thresholds, cutting approval cycles from 7 days to 1 day.",
+      "Built SQL-based eligibility logic and Excel scorecards comparing merchant performance metrics against proposed gross-margin rates (GMR), automating exception reviews and reducing decision turnaround from 7 days to 1 day."
     ],
-    "core": {
-    "problem": "Manual review of merchant gross-margin exception requests led to slow and inconsistent decision-making.",
-    "actions": [
-    "Designed a data-driven decision framework based on merchant performance metrics",
-    "Automated eligibility evaluation logic for special gross-margin rates",
-    "Integrated performance metrics into the pricing review workflow"
-    ],
-    "outputs": [
-    "Automated pricing evaluation tool",
-    "Standardized decision logic for margin exceptions"
-    ],
-    "results": [
-    "Reduced review turnaround time from 7 days to 1 day",
-    "Improved consistency of pricing approvals"
-    ],
-    "tools": [
-    "Python",
-    "SQL",
-    "Performance Metrics Analysis"
-    ],
-    "constraints": [
-    "Policy-driven margin rules",
-    "Need for consistent merchant evaluation"
-    ]
-    },
-    "tags": {
-    "skills": [
-    "Business Analytics",
-    "Automation",
-    "Decision Framework Design",
-    "Data Analysis"
-    ],
-    "domains": [
-    "E-commerce",
-    "Pricing Strategy"
-    ],
+	    "core": {
+	    "problem": "Manual review of merchant gross-margin exception requests led to slow and inconsistent decision-making.",
+	    "actions": [
+	    "Designed a data-driven decision framework based on merchant performance metrics",
+	    "Automated eligibility evaluation logic for special gross-margin rates",
+	    "Integrated performance metrics into the pricing review workflow",
+	    "Developed Excel scorecards to visualize merchant performance scores against proposed gross-margin rates (GMR) for decision support"
+	    ],
+	    "outputs": [
+	    "Automated pricing evaluation tool",
+	    "Standardized decision logic for margin exceptions",
+	    "Excel-based merchant score visualization for pricing approval"
+	    ],
+	    "results": [
+	    "Reduced review turnaround time from 7 days to 1 day",
+	    "Improved consistency of pricing approvals"
+	    ],
+	    "tools": [
+	    "Python",
+	    "SQL",
+	    "Excel",
+	    "Performance Metrics Analysis"
+	    ],
+	    "constraints": [
+	    "Policy-driven margin rules",
+	    "Need for consistent merchant evaluation"
+	    ]
+	    },
+	    "tags": {
+	    "skills": [
+	    "Business Analytics",
+	    "Automation",
+	    "Decision Framework Design",
+	    "Data Analysis",
+	    "Excel Visualization"
+	    ],
+	    "domains": [
+	    "E-commerce",
+	    "Pricing Strategy"
+	    ],
     "work_type": [
     "Process Automation",
     "Operational Analytics"

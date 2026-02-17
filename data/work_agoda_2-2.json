@@ -62,7 +62,7 @@
     "timeframe": "Jun 2021 - Nov 2021",
     "example_bullets": [
       "Engineered an AI-driven solution for room-type mismatch detection, leveraging Python and SQL for large-scale data processing and applying NLP techniques (TF-IDF, Levenshtein Distance) to preprocess text, which boosted detection rates by 120%.",
-      "Refined dynamic pricing accuracy by combining large-scale SQL analysis with NLP techniques (lemmatization, TF-IDF, edit distance) to detect room-type mismatches, increasing detection by 120%."
+      "Refined dynamic pricing accuracy by combining large-scale analysis with NLP techniques (lemmatization, TF-IDF, edit distance) to detect room-type mismatches, increasing detection by 120%."
   ],
     "core": {
       "problem": "Room-type mismatches between listings caused pricing inaccuracies and availability errors.",

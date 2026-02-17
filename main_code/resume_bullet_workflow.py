@@ -13,10 +13,10 @@ import litellm
 FILENAME_PATTERN = re.compile(
     r"^work_(?P<company>.+)_(?P<min_bullets>\d+)-(?P<max_bullets>\d+)\.json$"
 )
-DEFAULT_MODEL = "vertex_ai/gemini-2.5-pro"
+DEFAULT_MODEL = "vertex_ai/gemini-3-pro"
 MIN_BULLET_CHARS = 190
-MAX_BULLET_CHARS = 220
-MAX_GENERATION_ATTEMPTS = 1
+MAX_BULLET_CHARS = 240
+MAX_GENERATION_ATTEMPTS = 2
 CHARS_PER_TOKEN = 4
 THINKING_MULTIPLIER = 10
 TOKEN_BUFFER = 1000
@@ -482,7 +482,8 @@ def generate_bullets(
         "do not insert terms that misrepresent the work or that a reader cannot "
         "logically connect to the described activity. "
         "Paraphrase freely: use synonyms, vary vocabulary, and avoid echoing the "
-        "same terms within a bullet."
+        "same terms within a bullet. Use concrete technical/domain nouns and avoid "
+        "generic corporate abstractions."
     )
     user_prompt = {
         "task": "Generate resume bullets from the evidence.",
@@ -511,6 +512,7 @@ def generate_bullets(
                 "paraphrase freely — do not repeat the same noun phrase within a bullet",
                 "avoid mentioning the same tool or language (e.g. Python, SQL) in every bullet — "
                 "spread tools across bullets so each highlights different skills",
+                "avoid generic corporate abstractions and keep domain nouns concrete",
             ],
             "already_used_verbs": used_verbs or [],
             "tailoring": (
@@ -521,7 +523,10 @@ def generate_bullets(
                 "bottlenecks, planning anomalies). Avoid replacing specific "
                 "concepts with generic corporate abstractions (e.g., business "
                 "operations, operational excellence, key insights). Do not insert "
-                "JD keywords unless they are logically justified by the evidence."
+                "JD keywords unless they are logically justified by the evidence. "
+                "If JD terminology is broad or non-technical, prioritize "
+                "domain-specific and role-appropriate best practices over generic "
+                "JD language."
             ),
             "style_guardrails": [
                 "Prefer concrete technical/domain language over vague business phrasing.",
@@ -549,7 +554,12 @@ def generate_bullets(
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": json.dumps(user_prompt, ensure_ascii=True)},
     ]
-    first_pass = call_vertex_litellm(model=model, messages=messages, max_tokens=max_tokens)
+    first_pass = call_vertex_litellm(
+        model=model,
+        messages=messages,
+        temperature=0.2,
+        max_tokens=max_tokens,
+    )
     candidate_bullets = extract_numbered_bullets(first_pass)
     issues = validate_bullets(candidate_bullets, min_bullets, max_bullets)
     if not issues:
@@ -627,7 +637,8 @@ def generate_all_bullets(
         "do not insert terms that misrepresent the work or that a reader cannot "
         "logically connect to the described activity. "
         "Paraphrase freely: use synonyms, vary vocabulary, and avoid echoing the "
-        "same terms within a bullet. "
+        "same terms within a bullet. Use concrete technical/domain nouns and avoid "
+        "generic corporate abstractions. "
         f"CRITICAL LENGTH RULE: every bullet MUST be between {MIN_BULLET_CHARS} and "
         f"{MAX_BULLET_CHARS} characters. Count carefully — bullets over {MAX_BULLET_CHARS} "
         "characters will be rejected. "
@@ -670,6 +681,7 @@ def generate_all_bullets(
                 "avoid repetitive phrasing across the entire output",
                 "paraphrase freely — do not repeat the same noun phrase within a bullet",
                 "spread tools across bullets so each highlights different skills",
+                "avoid generic corporate abstractions and keep domain nouns concrete",
             ],
             "tailoring": (
                 "Align phrasing with the job description's required skills and "
@@ -679,7 +691,10 @@ def generate_all_bullets(
                 "bottlenecks, planning anomalies). Avoid replacing specific "
                 "concepts with generic corporate abstractions (e.g., business "
                 "operations, operational excellence, key insights). Do not insert "
-                "JD keywords unless they are logically justified by the evidence."
+                "JD keywords unless they are logically justified by the evidence. "
+                "If JD terminology is broad or non-technical, prioritize "
+                "domain-specific and role-appropriate best practices over generic "
+                "JD language."
             ),
             "style_guardrails": [
                 "Prefer concrete technical/domain language over vague business phrasing.",

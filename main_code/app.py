@@ -6,7 +6,14 @@ Cloud:        Deploy via Docker to Google Cloud Run
 
 import json
 import os
+import sys
 from pathlib import Path
+
+# When run via `streamlit run main_code/app.py`, ensure imports resolve to the
+# local project source (repo root), not an older installed package copy.
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 import streamlit as st
 
@@ -196,6 +203,7 @@ def render_jd_input() -> tuple[str, str, str]:
 def render_bullet_editor(bullets: dict[str, list[str]]) -> dict[str, list[str]]:
     """Render editable bullet text areas with live character counts."""
     edited: dict[str, list[str]] = {}
+    editor_nonce = int(st.session_state.get("editor_nonce", 0))
 
     for company, bullet_list in bullets.items():
         display = company.replace("_", " ").title()
@@ -206,7 +214,8 @@ def render_bullet_editor(bullets: dict[str, list[str]]) -> dict[str, list[str]]:
             val = st.text_area(
                 f"{display} — bullet {i + 1}",
                 value=bullet,
-                key=f"b_{company}_{i}",
+                # Include a nonce so a new generation doesn't reuse old widget state.
+                key=f"b_{editor_nonce}_{company}_{i}",
                 height=80,
                 label_visibility="collapsed",
             )
@@ -296,6 +305,7 @@ def main() -> None:
             st.session_state.company_name = company_name.strip()
             st.session_state.position_name = position_name.strip()
             st.session_state.jd_text = jd_text.strip()
+            st.session_state.editor_nonce = int(st.session_state.get("editor_nonce", 0)) + 1
             # Clear previous PDF so stale download button disappears
             st.session_state.pop("pdf_bytes", None)
             st.session_state.pop("tex_text", None)
