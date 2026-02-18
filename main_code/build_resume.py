@@ -25,7 +25,7 @@ from main_code.resume_bullet_workflow import (
     DEFAULT_MODEL,
     GENERATION_MODES,
     extract_jd_signals,
-    run_all_with_course_selection,
+    run_all_with_full_selection,
 )
 
 
@@ -249,6 +249,49 @@ def replace_columbia_coursework(tex_content: str, courses: List[str]) -> str:
     return tex_content[:start_idx] + updated_section + tex_content[end_idx:]
 
 
+def replace_academic_projects(
+    tex_content: str,
+    selected_projects: List[Dict[str, Any]],
+) -> str:
+    """Replace the Academic Projects section using selected project JSON records."""
+    valid_projects: List[Dict[str, Any]] = []
+    for project in selected_projects:
+        topic = str(project.get("Topic", "")).strip()
+        bullets = [
+            str(item).strip() for item in project.get("Bullet", []) if str(item).strip()
+        ]
+        if topic and bullets:
+            valid_projects.append({"Topic": topic, "Bullet": bullets})
+    if not valid_projects:
+        return tex_content
+
+    section_anchor = r"\section{Academic Projects}"
+    start_idx = tex_content.find(section_anchor)
+    if start_idx == -1:
+        print(
+            "[warning] Academic Projects section not found; replacement skipped.",
+            file=sys.stderr,
+        )
+        return tex_content
+
+    next_section_idx = tex_content.find(r"\section{", start_idx + len(section_anchor))
+    end_idx = next_section_idx if next_section_idx != -1 else len(tex_content)
+
+    lines: List[str] = [section_anchor]
+    for idx, project in enumerate(valid_projects):
+        if idx > 0:
+            lines.extend(["", r"\vspace{6pt}", ""])
+        topic = escape_latex(project["Topic"])
+        lines.append(rf"\noindent \textbf{{{topic}}}")
+        lines.append(r"\begin{itemize}")
+        for bullet in project["Bullet"]:
+            lines.append(f"    \\item {escape_latex(bullet)}")
+        lines.append(r"\end{itemize}")
+
+    new_section = "\n".join(lines) + "\n\n"
+    return tex_content[:start_idx] + new_section + tex_content[end_idx:]
+
+
 def tighten_spacing(tex: str) -> str:
     """Adjust spacing and typesetting for generated resumes.
 
@@ -369,8 +412,13 @@ def build_resume(
         file=sys.stderr,
     )
 
-    # 2. Generate bullets and top JD-relevant coursework in parallel
-    bullets, selected_courses = run_all_with_course_selection(
+    # 2. Generate bullets + JD-relevant coursework + top academic projects in parallel
+    (
+        bullets,
+        selected_courses,
+        selected_topics,
+        selected_academic_projects,
+    ) = run_all_with_full_selection(
         jd_path=jd_path,
         directory=jd_path.parent,
         model=model,
@@ -386,11 +434,16 @@ def build_resume(
         f"[info] Selected Columbia coursework: {selected_courses}",
         file=sys.stderr,
     )
+    print(
+        f"[info] Selected academic projects: {selected_topics}",
+        file=sys.stderr,
+    )
 
-    # 3. Read template and replace bullets/coursework
+    # 3. Read template and replace bullets/coursework/academic projects
     tex_content = template_path.read_text(encoding="utf-8")
     new_tex = replace_experience_bullets(tex_content, bullets)
     new_tex = replace_columbia_coursework(new_tex, selected_courses)
+    new_tex = replace_academic_projects(new_tex, selected_academic_projects)
 
     # 3b. Tighten spacing so longer generated bullets still fit one page
     new_tex = tighten_spacing(new_tex)

@@ -20,19 +20,24 @@ import streamlit as st
 from main_code.build_resume import (
     compile_to_pdf,
     cleanup_aux_files,
+    replace_academic_projects,
     replace_columbia_coursework,
     replace_experience_bullets,
     slugify,
     tighten_spacing,
 )
 from main_code.resume_bullet_workflow import (
+    DEFAULT_ACADEMIC_PROJECT_FILE,
     DEFAULT_GENERATION_MODE,
     DEFAULT_MODEL,
     GENERATION_MODES,
     MIN_BULLET_CHARS,
     MAX_BULLET_CHARS,
     parse_filename,
-    run_all_with_course_selection,
+    read_projects,
+    run_all_with_full_selection,
+    select_academic_projects_by_topics,
+    select_top_academic_topics_for_jd,
     select_top_courses_for_jd,
 )
 
@@ -310,7 +315,12 @@ def main() -> None:
 
         try:
             with st.spinner("Analyzing JD and generating bullets — this takes ~30 s ..."):
-                bullets, selected_courses = run_all_with_course_selection(
+                (
+                    bullets,
+                    selected_courses,
+                    selected_topics,
+                    selected_academic_projects,
+                ) = run_all_with_full_selection(
                     jd_path=jd_path,
                     directory=DATA_DIR,
                     model=model,
@@ -319,6 +329,8 @@ def main() -> None:
                 )
             st.session_state.bullets = bullets
             st.session_state.selected_courses = selected_courses
+            st.session_state.selected_academic_topics = selected_topics
+            st.session_state.selected_academic_projects = selected_academic_projects
             st.session_state.company_name = company_name.strip()
             st.session_state.position_name = position_name.strip()
             st.session_state.jd_text = jd_text.strip()
@@ -343,6 +355,10 @@ def main() -> None:
         st.markdown("**Top 4 JD-Relevant Columbia Coursework**")
         for course in st.session_state.selected_courses:
             st.write(f"- {course}")
+    if "selected_academic_topics" in st.session_state:
+        st.markdown("**Top 3 JD-Relevant Academic Project Topics**")
+        for topic in st.session_state.selected_academic_topics:
+            st.write(f"- {topic}")
 
     edited_bullets = render_bullet_editor(st.session_state.bullets)
 
@@ -362,6 +378,26 @@ def main() -> None:
                     )
                     st.session_state.selected_courses = selected_courses
                 new_tex = replace_columbia_coursework(new_tex, selected_courses)
+
+                selected_academic_projects = st.session_state.get(
+                    "selected_academic_projects"
+                )
+                if not selected_academic_projects:
+                    academic_file = DATA_DIR / DEFAULT_ACADEMIC_PROJECT_FILE
+                    academic_projects = read_projects(academic_file)
+                    selected_topics = select_top_academic_topics_for_jd(
+                        jd_text=st.session_state.get("jd_text", jd_text).strip(),
+                        project_list=academic_projects,
+                        model=model,
+                    )
+                    selected_academic_projects = select_academic_projects_by_topics(
+                        project_list=academic_projects,
+                        selected_topics=selected_topics,
+                    )
+                    st.session_state.selected_academic_topics = selected_topics
+                    st.session_state.selected_academic_projects = selected_academic_projects
+
+                new_tex = replace_academic_projects(new_tex, selected_academic_projects)
                 new_tex = tighten_spacing(new_tex)
 
                 cname = st.session_state.company_name

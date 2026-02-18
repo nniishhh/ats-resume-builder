@@ -4,24 +4,49 @@ import json
 import os
 import re
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Sequence, Tuple
 
+import logging
+
 import litellm
 
+# When run as `python main_code/resume_bullet_workflow.py`, ensure imports
+# resolve to local source (repo root) instead of requiring installed package.
+if __package__ in (None, ""):
+    repo_root = Path(__file__).resolve().parent.parent
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+
+from main_code.workflow_prompts import (
+    build_academic_project_selection_prompts,
+    build_all_bullets_system_prompt,
+    build_all_bullets_user_prompt,
+    build_bullet_generation_system_prompt,
+    build_bullet_generation_user_prompt,
+    build_bullet_repair_payload,
+    build_course_selection_prompts,
+    build_jd_signal_prompts,
+)
+
+# Reduce LiteLLM noise: avoid repeated "Give Feedback / Get Help" and debug tip on every error
+logging.getLogger("litellm").setLevel(logging.WARNING)
 
 FILENAME_PATTERN = re.compile(
     r"^work_(?P<company>.+)_(?P<min_bullets>\d+)-(?P<max_bullets>\d+)\.json$"
 )
 DEFAULT_MODEL = "vertex_ai/gemini-3-pro-preview"
-MIN_BULLET_CHARS = 190
-MAX_BULLET_CHARS = 230
+MIN_BULLET_CHARS = 200
+MAX_BULLET_CHARS = 240
 MAX_GENERATION_ATTEMPTS = 2
 CHARS_PER_TOKEN = 4
 THINKING_MULTIPLIER = 10
 TOKEN_BUFFER = 1000
 MIN_MAX_TOKENS = 4000
 DEFAULT_TOP_COURSE_COUNT = 4
+DEFAULT_TOP_ACADEMIC_PROJECT_COUNT = 3
+DEFAULT_ACADEMIC_PROJECT_FILE = "proj_academic_2-2.json"
 DEFAULT_COLUMBIA_COURSES = [
     "Applied machine learning",
     "Optimization models",
@@ -41,6 +66,8 @@ GLOBAL_VERTEX_PREVIEW_MODELS = {
     "gemini-3-pro-preview",
     "gemini-3-flash-preview",
 }
+RATE_LIMIT_MAX_RETRIES = 4
+RATE_LIMIT_BACKOFF_BASE_SECONDS = 2
 
 
 def parse_filename(project_file: Path) -> Tuple[str, int, int]:
@@ -119,28 +146,7 @@ def read_projects(project_path: Path) -> List[Dict[str, Any]]:
 
 
 def extract_jd_signals(jd_text: str, model: str) -> Dict[str, Any]:
-    system_prompt = (
-        "You are a precise job-description analyzer. "
-        "Return ONLY valid JSON with no extra text."
-    )
-    user_prompt = json.dumps(
-        {
-            "task": "Analyze this job description and extract structured signals.",
-            "output_schema": {
-                "role_type": "string — the job title / role type",
-                "required_skills": "list of strings — technical skills, tools, languages mentioned",
-                "domain_keywords": "list of strings — industry/domain terms and concepts",
-            },
-            "rules": [
-                "Extract all technical skills, tools, frameworks, and languages.",
-                "Extract domain-specific terms (e.g. autonomous vehicles, logistics, fintech).",
-                "Infer the role type from the title and description.",
-                "Return ONLY the JSON object. No markdown fences, no explanation.",
-            ],
-            "job_description": jd_text,
-        },
-        ensure_ascii=True,
-    )
+    system_prompt, user_prompt = build_jd_signal_prompts(jd_text)
 
     raw = call_vertex_litellm(
         model=model,
@@ -329,23 +335,11 @@ def select_top_courses_for_jd(
         return []
     top_k = max(1, min(top_k, len(course_pool)))
 
-    system_prompt = (
-        "You are a precise course-matching assistant. "
-        "Choose the most job-relevant courses from the provided list only. "
-        "Return ONLY valid JSON with no extra text."
+    system_prompt, user_prompt = build_course_selection_prompts(
+        jd_text=jd_text,
+        course_pool=course_pool,
+        top_k=top_k,
     )
-    user_prompt = {
-        "task": "Select the top job-relevant courses for this job description.",
-        "selection_rules": [
-            f"Select exactly {top_k} course names.",
-            "Use only names from the provided course list.",
-            "Prioritize direct technical and domain fit to the JD requirements.",
-            "Do not invent or rename courses.",
-        ],
-        "output_schema": {"selected_courses": [f"exactly {top_k} course names"]},
-        "courses": course_pool,
-        "job_description": jd_text,
-    }
 
     try:
         raw = call_vertex_litellm(
@@ -364,6 +358,160 @@ def select_top_courses_for_jd(
     fallback = _fallback_rank_courses(jd_text=jd_text, course_pool=course_pool, top_k=top_k)
     merged = selected + [course for course in fallback if course not in selected]
     return merged[:top_k]
+
+
+def _normalize_topic_name(value: str) -> str:
+    return re.sub(r"\s+", " ", value.strip().lower())
+
+
+def _extract_selected_topics_from_raw(
+    raw_output: str,
+    topic_pool: Sequence[str],
+) -> List[str]:
+    cleaned = raw_output.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```\w*\n?", "", cleaned)
+        cleaned = re.sub(r"\n?```$", "", cleaned)
+
+    candidates: List[str] = []
+    try:
+        payload = json.loads(cleaned)
+        if isinstance(payload, list):
+            candidates = [str(item).strip() for item in payload]
+        elif isinstance(payload, dict):
+            for key in ("selected_topics", "topics", "projects", "project_topics"):
+                value = payload.get(key)
+                if isinstance(value, list):
+                    candidates = [str(item).strip() for item in value]
+                    break
+    except json.JSONDecodeError:
+        pass
+
+    if not candidates:
+        for line in cleaned.splitlines():
+            item = re.sub(r"^\s*(?:\d+[.)-]?|[-*])\s*", "", line).strip()
+            if item:
+                candidates.append(item)
+
+    canonical_by_name = {
+        _normalize_topic_name(topic): topic for topic in topic_pool
+    }
+    selected: List[str] = []
+    for candidate in candidates:
+        normalized = _normalize_topic_name(candidate)
+        matched = canonical_by_name.get(normalized)
+        if not matched:
+            for normalized_topic, original in canonical_by_name.items():
+                if normalized and (
+                    normalized in normalized_topic or normalized_topic in normalized
+                ):
+                    matched = original
+                    break
+        if matched and matched not in selected:
+            selected.append(matched)
+    return selected
+
+
+def _fallback_rank_academic_topics(
+    jd_text: str,
+    projects: Sequence[Dict[str, Any]],
+    top_k: int,
+) -> List[str]:
+    terms = re.findall(r"[a-z0-9]{3,}", jd_text.lower())
+    jd_terms = {term for term in terms if term not in {"with", "from", "that", "this"}}
+    if not jd_terms:
+        return [
+            str(project.get("Topic", "")).strip()
+            for project in projects[:top_k]
+            if str(project.get("Topic", "")).strip()
+        ]
+
+    scored: List[Tuple[int, int, str]] = []
+    for idx, project in enumerate(projects):
+        topic = str(project.get("Topic", "")).strip()
+        if not topic:
+            continue
+        bullet_text = " ".join(
+            str(item).strip() for item in project.get("Bullet", []) if str(item).strip()
+        )
+        corpus = f"{topic} {bullet_text}".lower()
+        score = sum(1 for term in jd_terms if term in corpus)
+        scored.append((score, idx, topic))
+
+    if not scored:
+        return []
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return [topic for _, _, topic in scored[:top_k]]
+
+
+def select_top_academic_topics_for_jd(
+    jd_text: str,
+    project_list: Sequence[Dict[str, Any]],
+    model: str,
+    top_k: int = DEFAULT_TOP_ACADEMIC_PROJECT_COUNT,
+) -> List[str]:
+    topic_pool = [
+        str(project.get("Topic", "")).strip()
+        for project in project_list
+        if str(project.get("Topic", "")).strip()
+    ]
+    if not topic_pool:
+        return []
+    top_k = max(1, min(top_k, len(topic_pool)))
+
+    system_prompt, user_prompt = build_academic_project_selection_prompts(
+        jd_text=jd_text,
+        project_list=list(project_list),
+        top_k=top_k,
+    )
+
+    try:
+        raw = call_vertex_litellm(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.0,
+            max_tokens=600,
+        )
+        selected = _extract_selected_topics_from_raw(raw, topic_pool)
+    except Exception:
+        selected = []
+
+    fallback = _fallback_rank_academic_topics(
+        jd_text=jd_text,
+        projects=project_list,
+        top_k=top_k,
+    )
+    merged = selected + [topic for topic in fallback if topic not in selected]
+    return merged[:top_k]
+
+
+def select_academic_projects_by_topics(
+    project_list: Sequence[Dict[str, Any]],
+    selected_topics: Sequence[str],
+) -> List[Dict[str, Any]]:
+    canonical_by_topic = {
+        _normalize_topic_name(str(project.get("Topic", ""))): project
+        for project in project_list
+        if str(project.get("Topic", "")).strip()
+    }
+
+    selected_projects: List[Dict[str, Any]] = []
+    for topic in selected_topics:
+        normalized = _normalize_topic_name(topic)
+        matched = canonical_by_topic.get(normalized)
+        if not matched:
+            for normalized_topic, project in canonical_by_topic.items():
+                if normalized and (
+                    normalized in normalized_topic or normalized_topic in normalized
+                ):
+                    matched = project
+                    break
+        if matched and matched not in selected_projects:
+            selected_projects.append(matched)
+    return selected_projects
 
 
 def extract_numbered_bullets(text: str) -> List[str]:
@@ -474,6 +622,37 @@ def _is_location_mismatch_error(exc: Exception) -> bool:
     )
 
 
+def _is_rate_limited_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    indicators = (
+        "429",
+        "resource_exhausted",
+        "resource exhausted",
+        "rate limit",
+        "too many requests",
+        "quota exceeded",
+    )
+    return any(indicator in text for indicator in indicators)
+
+
+def _completion_with_exponential_backoff(request_kwargs: Dict[str, Any]) -> Any:
+    max_attempts = RATE_LIMIT_MAX_RETRIES + 1
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return litellm.completion(**request_kwargs)
+        except Exception as exc:
+            if not _is_rate_limited_error(exc) or attempt >= max_attempts:
+                raise
+            delay_seconds = RATE_LIMIT_BACKOFF_BASE_SECONDS * (2 ** (attempt - 1))
+            print(
+                "[warning] Vertex rate-limited (429/RESOURCE_EXHAUSTED). "
+                f"Retrying in {delay_seconds}s "
+                f"(attempt {attempt + 1}/{max_attempts}).",
+                file=sys.stderr,
+            )
+            time.sleep(delay_seconds)
+
+
 def call_vertex_litellm(
     model: str,
     messages: List[Dict[str, str]],
@@ -500,7 +679,7 @@ def call_vertex_litellm(
     }
 
     try:
-        response = litellm.completion(**request_kwargs)
+        response = _completion_with_exponential_backoff(request_kwargs)
     except Exception as exc:
         can_retry_global = (
             vertex_location != "global"
@@ -510,7 +689,7 @@ def call_vertex_litellm(
         if not can_retry_global:
             raise
         request_kwargs["vertex_location"] = "global"
-        response = litellm.completion(**request_kwargs)
+        response = _completion_with_exponential_backoff(request_kwargs)
 
     return (
         response.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
@@ -549,81 +728,19 @@ def generate_bullets(
     tokens_per_bullet = (MAX_BULLET_CHARS // CHARS_PER_TOKEN) * THINKING_MULTIPLIER
     max_tokens = max(MIN_MAX_TOKENS, max_bullets * tokens_per_bullet + TOKEN_BUFFER)
 
-    system_prompt = f"""You write concise, ATS-optimized resume bullets grounded strictly in the provided project evidence and job description.
-
-========================================
-OUTPUT CONTRACT (NON-NEGOTIABLE)
-========================================
-- Return ONLY a numbered list.
-- No markdown, commentary, explanations, or code fences.
-- Format: "1. First bullet\\n2. Second bullet"
-
-========================================
-HARD LENGTH RULE (NON-NEGOTIABLE)
-========================================
-- Each bullet MUST be between {MIN_BULLET_CHARS} and {MAX_BULLET_CHARS} characters (including spaces).
-- Bullets outside this range are invalid.
-
-========================================
-TRUTHFULNESS
-========================================
-- Do NOT invent metrics, tools, scope, stakeholders, or outcomes.
-- Every statement must be logically supported by the evidence.
-- You may paraphrase and reframe, but never fabricate.
-
-========================================
-ADAPTIVE FRAMING RULE
-========================================
-Let the job description determine what to emphasize and how to structure bullets.
-- If the JD emphasizes ownership, strategy, prioritization, or cross-functional delivery, structure bullets to highlight leadership, decisions, and business outcomes.
-- If the JD emphasizes technical execution, analytics, or modeling, structure bullets to highlight methods, systems, and measurable impact.
-Choose the most appropriate framing without adding unsupported details.
-
-========================================
-PROFESSIONAL ABSTRACTION
-========================================
-You may elevate specific implementations into accurate higher-level professional terminology when supported by evidence (e.g., "pipeline," "system," "AI","ML").
-Do NOT exaggerate beyond what the evidence supports.
-
-========================================
-JOB DESCRIPTION ALIGNMENT
-========================================
-- Use the JD to guide emphasis and terminology.
-- Prefer JD-aligned language only when it fits the evidence.
-- Do NOT force keywords that are not logically connected to the work.
-
-========================================
-BULLET ORDERING
-========================================
-- Order bullets by strongest alignment to the JD.
-- If relevance is similar, order by measurable impact and scale.
-
-========================================
-STYLE PRINCIPLES
-========================================
-- Prefer concrete nouns and outcomes over vague corporate phrasing.
-- Use strong, varied action verbs.
-- When a bullet includes a numeric or measurable result, you should place that result at the end of the sentence.
-- Avoid repetition."""
-
-    user_prompt = {
-        "task": f"Generate {min_bullets}-{max_bullets} resume bullets for {company}.",
-        "company": company,
-        "min_bullets": min_bullets,
-        "max_bullets": max_bullets,
-        "jd_analysis": jd_signals,
-        "job_description": jd_text,
-        "project_evidence": projects,
-        "already_used_verbs": used_verbs or [],
-    }
-    # Minimal constraints for repair flow
-    repair_constraints = {
-        "company": company,
-        "min_bullets": min_bullets,
-        "max_bullets": max_bullets,
-        "HARD_LIMIT_min_characters_per_bullet": MIN_BULLET_CHARS,
-        "HARD_LIMIT_max_characters_per_bullet": MAX_BULLET_CHARS,
-    }
+    system_prompt = build_bullet_generation_system_prompt(
+        min_bullet_chars=MIN_BULLET_CHARS,
+        max_bullet_chars=MAX_BULLET_CHARS,
+    )
+    user_prompt = build_bullet_generation_user_prompt(
+        company=company,
+        min_bullets=min_bullets,
+        max_bullets=max_bullets,
+        jd_signals=jd_signals,
+        jd_text=jd_text,
+        projects=projects,
+        used_verbs=used_verbs,
+    )
     if log_prompts:
         log_path = write_prompt_log(
             system_prompt=system_prompt,
@@ -654,19 +771,18 @@ STYLE PRINCIPLES
 
     latest_output = first_pass
     for attempt in range(2, MAX_GENERATION_ATTEMPTS + 1):
-        repair_payload = {
-            "instruction": (
-                "Regenerate the entire output to satisfy all constraints exactly. "
-                "Do not explain. Return only a numbered list."
-            ),
-            "attempt": attempt,
-            "issues": issues,
-            "previous_output": latest_output,
-            "constraints": repair_constraints,
-            "already_used_verbs": used_verbs or [],
-            "project_evidence": projects,
-            "output_rule": "Numbered list only. No explanations.",
-        }
+        repair_payload = build_bullet_repair_payload(
+            company=company,
+            min_bullets=min_bullets,
+            max_bullets=max_bullets,
+            min_bullet_chars=MIN_BULLET_CHARS,
+            max_bullet_chars=MAX_BULLET_CHARS,
+            issues=issues,
+            latest_output=latest_output,
+            used_verbs=used_verbs,
+            projects=projects,
+            attempt=attempt,
+        )
         repair_messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": json.dumps(repair_payload, ensure_ascii=True)},
@@ -720,68 +836,10 @@ def generate_all_bullets(
     tokens_per_bullet = (MAX_BULLET_CHARS // CHARS_PER_TOKEN) * THINKING_MULTIPLIER
     max_tokens = max(MIN_MAX_TOKENS, total_bullets * tokens_per_bullet + TOKEN_BUFFER)
 
-    system_prompt = f"""You write concise, ATS-optimized resume bullets grounded strictly in the provided project evidence and job description.
-
-========================================
-OUTPUT CONTRACT (NON-NEGOTIABLE)
-========================================
-- Return ONLY valid JSON.
-- No markdown, commentary, explanations, or code fences.
-- JSON must be a single object:
-  - Keys = company names (strings)
-  - Values = arrays of bullet strings
-
-Example:
-{{"Company A": ["bullet 1", "bullet 2"]}}
-
-
-========================================
-HARD LENGTH RULE (NON-NEGOTIABLE)
-========================================
-- Each bullet MUST be between {MIN_BULLET_CHARS} and {MAX_BULLET_CHARS} characters (including spaces).
-- Bullets outside this range are invalid.
-
-========================================
-TRUTHFULNESS
-========================================
-- Do NOT invent metrics, tools, scope, stakeholders, or outcomes.
-- Every statement must be logically supported by the evidence.
-- You may paraphrase and reframe, but never fabricate.
-
-========================================
-ADAPTIVE FRAMING RULE
-========================================
-Let the job description determine what to emphasize and how to structure bullets.
-- If the JD emphasizes ownership, strategy, prioritization, or cross-functional delivery, structure bullets to highlight leadership, decisions, and business outcomes.
-- If the JD emphasizes technical execution, analytics, or modeling, structure bullets to highlight methods, systems, and measurable impact.
-Choose the most appropriate framing without adding unsupported details.
-
-========================================
-PROFESSIONAL ABSTRACTION
-========================================
-You may elevate specific implementations into accurate higher-level professional terminology when supported by evidence (e.g., "pipeline," "system," "AI","ML").
-Do NOT exaggerate beyond what the evidence supports.
-
-========================================
-JOB DESCRIPTION ALIGNMENT
-========================================
-- Use the JD to guide emphasis and terminology.
-- Prefer JD-aligned language only when it fits the evidence.
-- Do NOT force keywords that are not logically connected to the work.
-
-========================================
-BULLET ORDERING
-========================================
-- Within each company, order bullets by strongest alignment to the JD.
-- If relevance is similar, order by measurable impact and scale.
-
-========================================
-STYLE PRINCIPLES
-========================================
-- Prefer concrete nouns and outcomes over vague corporate phrasing.
-- Use strong, varied action verbs.
-- When a bullet includes a numeric or measurable result, you should place that result at the end of the sentence.
-- Avoid repetition within each company."""
+    system_prompt = build_all_bullets_system_prompt(
+        min_bullet_chars=MIN_BULLET_CHARS,
+        max_bullet_chars=MAX_BULLET_CHARS,
+    )
 
     companies_spec = []
     for c in company_data:
@@ -792,12 +850,11 @@ STYLE PRINCIPLES
             "project_evidence": c["projects"],
         })
 
-    user_prompt = {
-        "task": "Generate resume bullets for ALL companies below in one JSON response.",
-        "jd_analysis": jd_signals,
-        "job_description": jd_text,
-        "companies": companies_spec,
-    }
+    user_prompt = build_all_bullets_user_prompt(
+        jd_signals=jd_signals,
+        jd_text=jd_text,
+        companies_spec=companies_spec,
+    )
 
     if log_prompts:
         log_path = write_prompt_log(
@@ -947,6 +1004,77 @@ def run_all_with_course_selection(
     return bullets, selected_courses
 
 
+def run_all_with_full_selection(
+    jd_path: Path,
+    directory: Path,
+    model: str,
+    log_prompts: bool,
+    generation_mode: Literal["single_prompt", "sequential"] = DEFAULT_GENERATION_MODE,
+    courses: Sequence[str] | None = None,
+    top_k_courses: int = DEFAULT_TOP_COURSE_COUNT,
+    academic_project_file: Path | None = None,
+    top_k_academic_topics: int = DEFAULT_TOP_ACADEMIC_PROJECT_COUNT,
+) -> Tuple[Dict[str, List[str]], List[str], List[str], List[Dict[str, Any]]]:
+    jd_text = read_jd(jd_path)
+    project_file = academic_project_file or (directory / DEFAULT_ACADEMIC_PROJECT_FILE)
+    if not project_file.exists():
+        raise FileNotFoundError(f"Academic project file not found: {project_file}")
+    academic_projects = read_projects(project_file)
+
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        bullets_future = executor.submit(
+            run_all,
+            jd_path,
+            directory,
+            model,
+            log_prompts,
+            generation_mode,
+        )
+        courses_future = executor.submit(
+            select_top_courses_for_jd,
+            jd_text,
+            model,
+            courses,
+            top_k_courses,
+        )
+        academic_topics_future = executor.submit(
+            select_top_academic_topics_for_jd,
+            jd_text,
+            academic_projects,
+            model,
+            top_k_academic_topics,
+        )
+        bullets = bullets_future.result()
+        selected_courses = courses_future.result()
+        selected_topics = academic_topics_future.result()
+
+    selected_projects = select_academic_projects_by_topics(
+        project_list=academic_projects,
+        selected_topics=selected_topics,
+    )
+    target_count = max(1, min(top_k_academic_topics, len(academic_projects)))
+    if len(selected_projects) < target_count:
+        known_topics = {
+            _normalize_topic_name(str(project.get("Topic", "")))
+            for project in selected_projects
+        }
+        for project in academic_projects:
+            topic = _normalize_topic_name(str(project.get("Topic", "")))
+            if topic and topic not in known_topics:
+                selected_projects.append(project)
+                known_topics.add(topic)
+            if len(selected_projects) >= target_count:
+                break
+
+    selected_projects = selected_projects[:target_count]
+    selected_topics = [
+        str(project.get("Topic", "")).strip()
+        for project in selected_projects
+        if str(project.get("Topic", "")).strip()
+    ]
+    return bullets, selected_courses, selected_topics, selected_projects
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Generate resume bullets using Vertex AI via LiteLLM."
@@ -972,6 +1100,11 @@ def main() -> int:
         "--top-courses-only",
         action="store_true",
         help="Return only the top JD-relevant course names.",
+    )
+    group.add_argument(
+        "--top-academic-only",
+        action="store_true",
+        help="Return only the top JD-relevant academic project Topic names.",
     )
     parser.add_argument(
         "--model",
@@ -1007,6 +1140,21 @@ def main() -> int:
         default=DEFAULT_TOP_COURSE_COUNT,
         help=f"Number of courses to return (default: {DEFAULT_TOP_COURSE_COUNT}).",
     )
+    parser.add_argument(
+        "--academic-project-file",
+        type=Path,
+        default=Path("data") / DEFAULT_ACADEMIC_PROJECT_FILE,
+        help="Path to academic project JSON file (default: data/proj_academic_2-2.json).",
+    )
+    parser.add_argument(
+        "--top-k-academic",
+        type=int,
+        default=DEFAULT_TOP_ACADEMIC_PROJECT_COUNT,
+        help=(
+            "Number of academic project topics to return "
+            f"(default: {DEFAULT_TOP_ACADEMIC_PROJECT_COUNT})."
+        ),
+    )
     args = parser.parse_args()
 
     try:
@@ -1019,6 +1167,16 @@ def main() -> int:
                 top_k=args.top_k_courses,
             )
             print(json.dumps(selected_courses, indent=2, ensure_ascii=False))
+        elif args.top_academic_only:
+            jd_text = read_jd(args.jd)
+            academic_projects = read_projects(args.academic_project_file)
+            selected_topics = select_top_academic_topics_for_jd(
+                jd_text=jd_text,
+                project_list=academic_projects,
+                model=args.model,
+                top_k=args.top_k_academic,
+            )
+            print(json.dumps(selected_topics, indent=2, ensure_ascii=False))
         elif args.all:
             directory = args.jd.parent
             results = run_all(

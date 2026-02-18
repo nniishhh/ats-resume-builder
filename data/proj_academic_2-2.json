@@ -1,167 +1,38 @@
 [
-    {
-    "project_id": "academic_credit_risk_modeling_kcg",
-    "title": "Credit-Risk Modeling for Applicant Screening (Kalamata Capital Group)",
-    "company": "Academic Projects",
-    "timeframe": "2025",
-    "standout_bullet": "Built and evaluated credit-risk models on 100K transactions with 200 engineered features using TimeSeriesSplit and SHAP, achieving 0.82 AUC to accelerate underwriting decisions.",
-    "core": {
-    "problem": "Manual or heuristic-based underwriting processes required a more robust, data-driven risk assessment framework.",
-    "actions": [
-    "Engineered 200 features from 100K transaction records",
-    "Trained models including XGBoost, CatBoost, and regularized logistic regression",
-    "Applied TimeSeriesSplit cross-validation to preserve temporal integrity",
-    "Used SHAP for model interpretability and risk driver analysis"
-    ],
-    "outputs": [
-    "Credit-risk scoring models",
-    "Feature engineering pipeline",
-    "Model interpretability reports"
-    ],
-    "results": [
-    "Achieved 0.82 AUC",
-    "Accelerated underwriting decision-making"
-    ],
-    "tools": [
-    "Python",
-    "XGBoost",
-    "CatBoost",
-    "Logistic Regression",
-    "SHAP",
-    "Scikit-learn"
-    ],
-    "constraints": [
-    "Temporal data dependency",
-    "Need for model interpretability"
+  {
+    "Topic": "Columbia University - ATS Resume Builder (2025)",
+    "Link": "github.com/nniishhh/ats-resume-builder",
+    "Bullet": [
+      "Built an ATS resume generation system using Vertex AI (Gemini) via LiteLLM that extracts job description signals, generates ATS bullets with 190–220 character validation and auto-repair loops, then compiles LaTeX into a final PDF (CLI + UI)."
     ]
-    },
-    "tags": {
-    "skills": [
-    "Machine Learning",
-    "Feature Engineering",
-    "Model Evaluation",
-    "Explainable AI"
-    ],
-    "domains": [
-    "Fintech",
-    "Credit Risk"
-    ],
-    "work_type": [
-    "Predictive Modeling",
-    "Applied ML"
-    ],
-    "interaction_type": [
-    "Industry Collaboration"
+  },
+  {
+    "Topic": "Email Prime (Amazon Bedrock Innovation Challenge, 2025)",
+    "Link": "github.com/Amazon-Bedrock-Innovation-Challenge/email-prime",
+    "Bullet": [
+      "Built a Gmail-connected email intelligence app using AWS Bedrock with instructor and Pydantic schemas to classify threads and generate structured summaries; added RAG with Titan embeddings and FAISS retrieval plus incremental processing."
     ]
-    }
-    },
-    {
-    "project_id": "academic_fx_trading_strategy",
-    "title": "Algorithmic FX Trading Strategy Optimization",
-    "company": "Academic Projects",
-    "timeframe": "2023",
-    "standout_bullet": "Designed an end-to-end FX trading pipeline with ML-based entry prediction and risk–reward optimization, achieving 5.8% simulated net profit.",
-    "core": {
-    "problem": "Trading strategies required systematic entry prediction and risk–reward optimization to improve profitability.",
-    "actions": [
-    "Engineered technical indicators and trading signals",
-    "Built predictive models including Random Forest and XGBoost",
-    "Simulated trades under defined risk–reward strategies",
-    "Evaluated performance using backtesting metrics"
-    ],
-    "outputs": [
-    "End-to-end trading pipeline",
-    "Backtesting evaluation framework"
-    ],
-    "results": [
-    "Achieved 5.8% simulated net profit"
-    ],
-    "tools": [
-    "Python",
-    "Random Forest",
-    "XGBoost",
-    "Scikit-learn"
-    ],
-    "constraints": [
-    "Historical market data dependency",
-    "Risk–reward tradeoff management"
+  },
+  {
+    "Topic": "Columbia University - Credit-Risk Modeling (Kalamata Capital Group, 2025)",
+    "Link": "N/A",
+    "Bullet": [
+      "Built credit-risk models (XGBoost, CatBoost, regularized logistic regression) on 100K transactions with 200 engineered features, using TimeSeriesSplit cross-validation, and SHAP interpretability; achieved 0.82 AUC, accelerating underwriting decisions.",
+      "Utilized Cursor for AI-assisted code generation and refactoring of the data pipeline, increasing velocity."
     ]
-    },
-    "tags": {
-    "skills": [
-    "Predictive Modeling",
-    "Feature Engineering",
-    "Backtesting",
-    "Model Evaluation"
-    ],
-    "domains": [
-    "Finance",
-    "Algorithmic Trading"
-    ],
-    "work_type": [
-    "End-to-End Pipeline",
-    "Simulation Modeling"
-    ],
-    "interaction_type": [
-    "Academic Research"
+  },
+  {
+    "Topic": "Chulalongkorn University - Algorithmic FX Trading Strategy (2023)",
+    "Link": "N/A",
+    "Bullet": [
+      "Designed an end-to-end FX trading pipeline with feature engineering (technical indicators, signals) and optimized ML classifiers (Random Forest, XGBoost) to predict profitable trade entries under risk–reward strategies, achieving 5.8% simulated net profit."
     ]
-    }
-    },
-    {
-    "project_id": "academic_llm_recommender_system",
-    "title": "LLM-Based Conversational Recommender System",
-    "company": "Academic Projects",
-    "timeframe": "2023",
-    "standout_bullet": "Launched a LangChain-based conversational recommender with GPT-3.5/FLAN-T5 and Weaviate retrieval, achieving over 70% single-turn accuracy with multi-turn support.",
-    "core": {
-    "problem": "Traditional recommender systems lacked conversational context and multi-turn interaction capabilities.",
-    "actions": [
-    "Built a conversational pipeline using LangChain",
-    "Integrated GPT-3.5 and FLAN-T5 for query understanding and response generation",
-    "Implemented Weaviate vector search for retrieval",
-    "Benchmarked structured versus paragraph embeddings",
-    "Built a data pipeline for 1.3K restaurants and 9K reviews"
-    ],
-    "outputs": [
-    "Conversational recommender system",
-    "Embedding benchmarking analysis",
-    "Structured restaurant review dataset"
-    ],
-    "results": [
-    "Achieved over 70% single-turn accuracy",
-    "Enabled multi-turn conversational support"
-    ],
-    "tools": [
-    "Python",
-    "LangChain",
-    "GPT-3.5",
-    "FLAN-T5",
-    "Weaviate"
-    ],
-    "constraints": [
-    "Limited labeled conversational data",
-    "Need for retrieval-augmented generation"
+  },
+  {
+    "Topic": "Chulalongkorn University - Conversational Recommender System (2023)",
+    "Link": "N/A",
+    "Bullet": [
+      "Launched an LLM-based conversational recommender in LangChain using GPT-3.5/FLAN-T5 for query understanding and response generation and Weaviate vector search for retrieval, achieving >70% single-turn accuracy with multi-turn support."
     ]
-    },
-    "tags": {
-    "skills": [
-    "LLMs",
-    "Retrieval-Augmented Generation",
-    "Vector Search",
-    "Embedding Evaluation"
-    ],
-    "domains": [
-    "Recommender Systems",
-    "NLP"
-    ],
-    "work_type": [
-    "Applied AI",
-    "System Development"
-    ],
-    "interaction_type": [
-    "Academic Research"
-    ]
-    }
-    }
-    ]
-    
+  }
+]
