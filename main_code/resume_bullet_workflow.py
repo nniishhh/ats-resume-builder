@@ -27,21 +27,28 @@ from main_code.workflow_prompts import (
     build_bullet_generation_user_prompt,
     build_bullet_repair_payload,
     build_course_selection_prompts,
-    build_jd_signal_prompts,
+    build_jd_summary_prompts,
 )
 
-# Reduce LiteLLM noise: avoid repeated "Give Feedback / Get Help" and debug tip on every error
-logging.getLogger("litellm").setLevel(logging.WARNING)
+# Reduce LiteLLM noise unless debug requested
+if os.getenv("LITELLM_DEBUG"):
+    litellm._turn_on_debug()
+    logging.getLogger("litellm").setLevel(logging.DEBUG)
+else:
+    logging.getLogger("litellm").setLevel(logging.WARNING)
 
 FILENAME_PATTERN = re.compile(
     r"^work_(?P<company>.+)_(?P<min_bullets>\d+)-(?P<max_bullets>\d+)\.json$"
 )
-DEFAULT_MODEL = "vertex_ai/gemini-3-pro-preview"
+DEFAULT_MODEL = "vertex_ai/gemini-3-flash-preview"
+# DEFAULT_MODEL = "vertex_ai/gemini-2.5-pro"
+DEFAULT_NON_BULLET_MODEL = "vertex_ai/gemini-3-flash-preview"
+
 MIN_BULLET_CHARS = 200
 MAX_BULLET_CHARS = 240
 MAX_GENERATION_ATTEMPTS = 2
 CHARS_PER_TOKEN = 4
-THINKING_MULTIPLIER = 10
+THINKING_MULTIPLIER = 50
 TOKEN_BUFFER = 1000
 MIN_MAX_TOKENS = 4000
 DEFAULT_TOP_COURSE_COUNT = 4
@@ -68,6 +75,46 @@ GLOBAL_VERTEX_PREVIEW_MODELS = {
 }
 RATE_LIMIT_MAX_RETRIES = 4
 RATE_LIMIT_BACKOFF_BASE_SECONDS = 2
+LLM_TASK_JD_SIGNALS = "jd_signals"
+LLM_TASK_BULLET_GENERATION = "bullet_generation"
+LLM_TASK_BULLET_REPAIR = "bullet_repair"
+LLM_TASK_BULLETS_ALL = "bullets_all"
+LLM_TASK_COURSE_SELECTION = "course_selection"
+LLM_TASK_ACADEMIC_SELECTION = "academic_selection"
+DEFAULT_TASK_LLM_SETTINGS: Dict[str, Dict[str, Any]] = {
+    LLM_TASK_JD_SIGNALS: {
+        "model": DEFAULT_NON_BULLET_MODEL,
+        "temperature": 0.0,
+    },
+    LLM_TASK_BULLET_GENERATION: {
+        "temperature": 0.3,
+    },
+    LLM_TASK_BULLET_REPAIR: {
+        "temperature": 0.3,
+    },
+    LLM_TASK_BULLETS_ALL: {
+        "temperature": 0.3,
+    },
+    LLM_TASK_COURSE_SELECTION: {
+        "model": DEFAULT_NON_BULLET_MODEL,
+        "temperature": 0.0,
+    },
+    LLM_TASK_ACADEMIC_SELECTION: {
+        "model": DEFAULT_NON_BULLET_MODEL,
+        "temperature": 0.0,
+    },
+}
+
+
+def get_task_llm_settings(task: str, fallback_model: str) -> Tuple[str, float]:
+    task_settings = DEFAULT_TASK_LLM_SETTINGS.get(task, {})
+    model = str(task_settings.get("model", fallback_model)).strip() or fallback_model
+    temperature = float(task_settings.get("temperature", 0.3))
+    # Gemini 3 preview models require temperature=1.0 to avoid infinite loops and failures
+    # model_stripped = model.split("/")[-1] if "/" in model else model
+    # if model_stripped in GLOBAL_VERTEX_PREVIEW_MODELS:
+    #     temperature = 1.0
+    return model, temperature
 
 
 def parse_filename(project_file: Path) -> Tuple[str, int, int]:
@@ -145,37 +192,27 @@ def read_projects(project_path: Path) -> List[Dict[str, Any]]:
     return data
 
 
-def extract_jd_signals(jd_text: str, model: str) -> Dict[str, Any]:
-    system_prompt, user_prompt = build_jd_signal_prompts(jd_text)
-
+def summarize_job_description(jd_text: str, model: str) -> str:
+    """Clean JD text using the JD Analyst prompt and return preserved-signal text."""
+    task_model, task_temperature = get_task_llm_settings(
+        LLM_TASK_JD_SIGNALS,
+        fallback_model=model,
+    )
+    system_prompt, user_prompt = build_jd_summary_prompts(jd_text)
     raw = call_vertex_litellm(
-        model=model,
+        model=task_model,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        temperature=0.0,
+        temperature=task_temperature,
     )
 
     cleaned = raw.strip()
     if cleaned.startswith("```"):
         cleaned = re.sub(r"^```\w*\n?", "", cleaned)
         cleaned = re.sub(r"\n?```$", "", cleaned)
-
-    try:
-        signals = json.loads(cleaned)
-    except json.JSONDecodeError:
-        signals = {
-            "role_type": "Unknown",
-            "required_skills": [],
-            "domain_keywords": [],
-        }
-
-    for key in ("role_type", "required_skills", "domain_keywords"):
-        if key not in signals:
-            signals[key] = [] if key != "role_type" else "Unknown"
-
-    return signals
+    return cleaned.strip() or jd_text
 
 
 def _normalize_course_name(value: str) -> str:
@@ -334,6 +371,10 @@ def select_top_courses_for_jd(
     if not course_pool:
         return []
     top_k = max(1, min(top_k, len(course_pool)))
+    task_model, task_temperature = get_task_llm_settings(
+        LLM_TASK_COURSE_SELECTION,
+        fallback_model=model,
+    )
 
     system_prompt, user_prompt = build_course_selection_prompts(
         jd_text=jd_text,
@@ -343,12 +384,12 @@ def select_top_courses_for_jd(
 
     try:
         raw = call_vertex_litellm(
-            model=model,
+            model=task_model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": json.dumps(user_prompt, ensure_ascii=True)},
             ],
-            temperature=0.0,
+            temperature=task_temperature,
             max_tokens=600,
         )
         selected = _extract_selected_courses_from_raw(raw, course_pool)
@@ -458,6 +499,10 @@ def select_top_academic_topics_for_jd(
     if not topic_pool:
         return []
     top_k = max(1, min(top_k, len(topic_pool)))
+    task_model, task_temperature = get_task_llm_settings(
+        LLM_TASK_ACADEMIC_SELECTION,
+        fallback_model=model,
+    )
 
     system_prompt, user_prompt = build_academic_project_selection_prompts(
         jd_text=jd_text,
@@ -467,12 +512,12 @@ def select_top_academic_topics_for_jd(
 
     try:
         raw = call_vertex_litellm(
-            model=model,
+            model=task_model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            temperature=0.0,
+            temperature=task_temperature,
             max_tokens=600,
         )
         selected = _extract_selected_topics_from_raw(raw, topic_pool)
@@ -645,7 +690,7 @@ def _completion_with_exponential_backoff(request_kwargs: Dict[str, Any]) -> Any:
                 raise
             delay_seconds = RATE_LIMIT_BACKOFF_BASE_SECONDS * (2 ** (attempt - 1))
             print(
-                "[warning] Vertex rate-limited (429/RESOURCE_EXHAUSTED). "
+                "[warning] LLM rate-limited (429/RESOURCE_EXHAUSTED). "
                 f"Retrying in {delay_seconds}s "
                 f"(attempt {attempt + 1}/{max_attempts}).",
                 file=sys.stderr,
@@ -653,42 +698,47 @@ def _completion_with_exponential_backoff(request_kwargs: Dict[str, Any]) -> Any:
             time.sleep(delay_seconds)
 
 
+def _is_vertex_model(model: str) -> bool:
+    return model.strip().lower().startswith("vertex_ai/")
+
+
 def call_vertex_litellm(
     model: str,
     messages: List[Dict[str, str]],
     temperature: float = 0.3,
     max_tokens: int = 2048,
-    reasoning_effort: str = "high",
 ) -> str:
-    vertex_project = os.getenv("VERTEXAI_PROJECT")
-    vertex_location = os.getenv("VERTEXAI_LOCATION", "global")
-    if not vertex_project:
-        raise EnvironmentError(
-            "Set VERTEXAI_PROJECT environment variable."
-        )
-
     request_kwargs = {
         "model": model,
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
-        "vertex_project": vertex_project,
-        "vertex_location": vertex_location,
         "timeout": 150,
-        "reasoning_effort": reasoning_effort,
     }
 
-    try:
-        response = _completion_with_exponential_backoff(request_kwargs)
-    except Exception as exc:
-        can_retry_global = (
-            vertex_location != "global"
-            and _is_global_vertex_preview_model(model)
-            and _is_location_mismatch_error(exc)
-        )
-        if not can_retry_global:
-            raise
-        request_kwargs["vertex_location"] = "global"
+    if _is_vertex_model(model):
+        vertex_project = os.getenv("VERTEXAI_PROJECT")
+        vertex_location = os.getenv("VERTEXAI_LOCATION", "global")
+        if not vertex_project:
+            raise EnvironmentError(
+                "Set VERTEXAI_PROJECT environment variable."
+            )
+        request_kwargs["vertex_project"] = vertex_project
+        request_kwargs["vertex_location"] = vertex_location
+
+        try:
+            response = _completion_with_exponential_backoff(request_kwargs)
+        except Exception as exc:
+            can_retry_global = (
+                vertex_location != "global"
+                and _is_global_vertex_preview_model(model)
+                and _is_location_mismatch_error(exc)
+            )
+            if not can_retry_global:
+                raise
+            request_kwargs["vertex_location"] = "global"
+            response = _completion_with_exponential_backoff(request_kwargs)
+    else:
         response = _completion_with_exponential_backoff(request_kwargs)
 
     return (
@@ -724,7 +774,14 @@ def generate_bullets(
     used_verbs: List[str] | None = None,
 ) -> str:
     company, min_bullets, max_bullets = parse_filename(project_file)
-    jd_signals = extract_jd_signals(jd_text, model=model)
+    generation_model, generation_temperature = get_task_llm_settings(
+        LLM_TASK_BULLET_GENERATION,
+        fallback_model=model,
+    )
+    repair_model, repair_temperature = get_task_llm_settings(
+        LLM_TASK_BULLET_REPAIR,
+        fallback_model=model,
+    )
     tokens_per_bullet = (MAX_BULLET_CHARS // CHARS_PER_TOKEN) * THINKING_MULTIPLIER
     max_tokens = max(MIN_MAX_TOKENS, max_bullets * tokens_per_bullet + TOKEN_BUFFER)
 
@@ -736,7 +793,6 @@ def generate_bullets(
         company=company,
         min_bullets=min_bullets,
         max_bullets=max_bullets,
-        jd_signals=jd_signals,
         jd_text=jd_text,
         projects=projects,
         used_verbs=used_verbs,
@@ -754,9 +810,9 @@ def generate_bullets(
         {"role": "user", "content": json.dumps(user_prompt, ensure_ascii=True)},
     ]
     first_pass = call_vertex_litellm(
-        model=model,
+        model=generation_model,
         messages=messages,
-        temperature=0.2,
+        temperature=generation_temperature,
         max_tokens=max_tokens,
     )
     candidate_bullets = extract_numbered_bullets(first_pass)
@@ -779,6 +835,7 @@ def generate_bullets(
             max_bullet_chars=MAX_BULLET_CHARS,
             issues=issues,
             latest_output=latest_output,
+            jd_text=jd_text,
             used_verbs=used_verbs,
             projects=projects,
             attempt=attempt,
@@ -798,9 +855,9 @@ def generate_bullets(
             )
 
         latest_output = call_vertex_litellm(
-            model=model,
+            model=repair_model,
             messages=repair_messages,
-            temperature=0.15,
+            temperature=repair_temperature,
             max_tokens=max_tokens,
         )
         candidate_bullets = extract_numbered_bullets(latest_output)
@@ -830,7 +887,10 @@ def generate_all_bullets(
     model: str,
     log_prompts: bool = False,
 ) -> Dict[str, List[str]]:
-    jd_signals = extract_jd_signals(jd_text, model=model)
+    task_model, task_temperature = get_task_llm_settings(
+        LLM_TASK_BULLETS_ALL,
+        fallback_model=model,
+    )
 
     total_bullets = sum(c["max_bullets"] for c in company_data)
     tokens_per_bullet = (MAX_BULLET_CHARS // CHARS_PER_TOKEN) * THINKING_MULTIPLIER
@@ -851,7 +911,6 @@ def generate_all_bullets(
         })
 
     user_prompt = build_all_bullets_user_prompt(
-        jd_signals=jd_signals,
         jd_text=jd_text,
         companies_spec=companies_spec,
     )
@@ -869,7 +928,12 @@ def generate_all_bullets(
         {"role": "user", "content": json.dumps(user_prompt, ensure_ascii=True)},
     ]
 
-    raw = call_vertex_litellm(model=model, messages=messages, max_tokens=max_tokens)
+    raw = call_vertex_litellm(
+        model=task_model,
+        messages=messages,
+        temperature=task_temperature,
+        max_tokens=max_tokens,
+    )
 
     cleaned = raw.strip()
     if cleaned.startswith("```"):
@@ -893,8 +957,13 @@ def run_all(
     model: str,
     log_prompts: bool,
     generation_mode: Literal["single_prompt", "sequential"] = DEFAULT_GENERATION_MODE,
+    jd_summary_text: str | None = None,
 ) -> Dict[str, List[str]]:
-    jd_text = read_jd(jd_path)
+    if jd_summary_text is None:
+        raw_jd_text = read_jd(jd_path)
+        jd_text = summarize_job_description(jd_text=raw_jd_text, model=model)
+    else:
+        jd_text = jd_summary_text
     project_files = sorted(directory.glob("work_*_*-*.json"))
     if not project_files:
         raise FileNotFoundError(f"No work_*_<min>-<max>.json files found in {directory}")
@@ -982,7 +1051,8 @@ def run_all_with_course_selection(
     courses: Sequence[str] | None = None,
     top_k: int = DEFAULT_TOP_COURSE_COUNT,
 ) -> Tuple[Dict[str, List[str]], List[str]]:
-    jd_text = read_jd(jd_path)
+    raw_jd_text = read_jd(jd_path)
+    jd_summary = summarize_job_description(jd_text=raw_jd_text, model=model)
     with ThreadPoolExecutor(max_workers=2) as executor:
         bullets_future = executor.submit(
             run_all,
@@ -991,10 +1061,11 @@ def run_all_with_course_selection(
             model,
             log_prompts,
             generation_mode,
+            jd_summary,
         )
         courses_future = executor.submit(
             select_top_courses_for_jd,
-            jd_text,
+            jd_summary,
             model,
             courses,
             top_k,
@@ -1015,7 +1086,8 @@ def run_all_with_full_selection(
     academic_project_file: Path | None = None,
     top_k_academic_topics: int = DEFAULT_TOP_ACADEMIC_PROJECT_COUNT,
 ) -> Tuple[Dict[str, List[str]], List[str], List[str], List[Dict[str, Any]]]:
-    jd_text = read_jd(jd_path)
+    raw_jd_text = read_jd(jd_path)
+    jd_summary = summarize_job_description(jd_text=raw_jd_text, model=model)
     project_file = academic_project_file or (directory / DEFAULT_ACADEMIC_PROJECT_FILE)
     if not project_file.exists():
         raise FileNotFoundError(f"Academic project file not found: {project_file}")
@@ -1029,17 +1101,18 @@ def run_all_with_full_selection(
             model,
             log_prompts,
             generation_mode,
+            jd_summary,
         )
         courses_future = executor.submit(
             select_top_courses_for_jd,
-            jd_text,
+            jd_summary,
             model,
             courses,
             top_k_courses,
         )
         academic_topics_future = executor.submit(
             select_top_academic_topics_for_jd,
-            jd_text,
+            jd_summary,
             academic_projects,
             model,
             top_k_academic_topics,
@@ -1159,7 +1232,8 @@ def main() -> int:
 
     try:
         if args.top_courses_only:
-            jd_text = read_jd(args.jd)
+            raw_jd_text = read_jd(args.jd)
+            jd_text = summarize_job_description(jd_text=raw_jd_text, model=args.model)
             selected_courses = select_top_courses_for_jd(
                 jd_text=jd_text,
                 model=args.model,
@@ -1168,7 +1242,8 @@ def main() -> int:
             )
             print(json.dumps(selected_courses, indent=2, ensure_ascii=False))
         elif args.top_academic_only:
-            jd_text = read_jd(args.jd)
+            raw_jd_text = read_jd(args.jd)
+            jd_text = summarize_job_description(jd_text=raw_jd_text, model=args.model)
             academic_projects = read_projects(args.academic_project_file)
             selected_topics = select_top_academic_topics_for_jd(
                 jd_text=jd_text,
@@ -1188,7 +1263,8 @@ def main() -> int:
             )
             print(json.dumps(results, indent=2, ensure_ascii=False))
         else:
-            jd_text = read_jd(args.jd)
+            raw_jd_text = read_jd(args.jd)
+            jd_text = summarize_job_description(jd_text=raw_jd_text, model=args.model)
             projects = read_projects(args.project_file)
             output = generate_bullets(
                 jd_text=jd_text,

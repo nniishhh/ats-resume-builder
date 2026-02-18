@@ -1,118 +1,115 @@
 [
-    {
+  {
     "project_id": "shopee_ocr_benchmarking",
     "title": "OCR Benchmarking and Merchant Onboarding Automation",
     "company": "Shopee",
-    "timeframe": "May 2022 - Aug 2022",
     "example_bullets": [
       "Improved merchant onboarding by benchmarking an OCR system comparing Google, AWS, Azure, with image preprocessing (edge detection, skew correction) to extract and validate ID and bank documents, cutting verification time by 85%."
     ],
     "core": {
-    "problem": "Manual document verification during merchant onboarding was slow and inconsistent due to OCR accuracy limitations.",
-    "actions": [
-    "Benchmarked OCR vendors including Google, AWS, and Azure",
-    "Applied image preprocessing techniques such as edge detection and skew correction",
-    "Evaluated extraction accuracy across ID and bank documents",
-    "Optimized evaluation pipeline to improve processing speed and accuracy"
-    ],
-    "outputs": [
-    "OCR benchmarking framework",
-    "Improved document verification pipeline"
-    ],
-    "results": [
-    "Improved document verification throughput by 85%"
-    ],
-    "tools": [
-    "Python",
-    "OCR",
-    "Google OCR",
-    "AWS OCR",
-    "Azure OCR",
-    "Image Processing"
-    ],
-    "constraints": [
-    "High-volume onboarding requests",
-    "Document quality variability"
-    ]
+      "problem": "Manual document verification during merchant onboarding was slow and inconsistent due to OCR accuracy limitations.",
+      "actions": [
+        "Benchmarked OCR vendors including Google, AWS, and Azure",
+        "Applied image preprocessing techniques such as edge detection and skew correction",
+        "Evaluated extraction accuracy across ID and bank documents",
+        "Optimized evaluation pipeline to improve processing speed and accuracy"
+      ],
+      "outputs": [
+        "OCR benchmarking framework",
+        "Improved document verification pipeline"
+      ],
+      "results": [
+        "Improved document verification throughput by 85%"
+      ],
+      "tools": [
+        "Python",
+        "OCR",
+        "Google OCR",
+        "AWS OCR",
+        "Azure OCR",
+        "Image Processing"
+      ],
+      "constraints": [
+        "High-volume onboarding requests",
+        "Document quality variability"
+      ]
     },
     "tags": {
-    "skills": [
-    "Automation",
-    "OCR",
-    "Image Processing",
-    "Benchmarking",
-    "Pipeline Optimization"
-    ],
-    "domains": [
-    "E-commerce",
-    "Fintech Operations"
-    ],
-    "work_type": [
-    "Process Automation",
-    "Evaluation Framework"
-    ],
-    "interaction_type": [
-    "Cross-functional"
-    ]
+      "skills": [
+        "Automation",
+        "OCR",
+        "Image Processing",
+        "Benchmarking",
+        "Pipeline Optimization"
+      ],
+      "domains": [
+        "E-commerce",
+        "Fintech Operations"
+      ],
+      "work_type": [
+        "Process Automation",
+        "Evaluation Framework"
+      ],
+      "interaction_type": [
+        "Cross-functional"
+      ]
     }
-    },
-    {
+  },
+  {
     "project_id": "shopee_pricing_automation",
     "title": "Merchant Pricing Exception Automation Framework",
     "company": "Shopee",
-    "timeframe": "May 2022 - Aug 2022",
     "example_bullets": [
       "Implemented a Python + SQL evaluation pipeline to standardize merchant pricing exception checks and generated Excel visualizations benchmarking merchant scores versus target GMR thresholds, cutting approval cycles from 7 days to 1 day.",
       "Built SQL-based eligibility logic and Excel scorecards comparing merchant performance metrics against proposed gross-margin rates (GMR), automating exception reviews and reducing decision turnaround from 7 days to 1 day."
     ],
-	    "core": {
-	    "problem": "Manual review of merchant gross-margin exception requests led to slow and inconsistent decision-making.",
-	    "actions": [
-	    "Designed a data-driven decision framework based on merchant performance metrics",
-	    "Automated eligibility evaluation logic for special gross-margin rates",
-	    "Integrated performance metrics into the pricing review workflow",
-	    "Developed Excel scorecards to visualize merchant performance scores against proposed gross-margin rates (GMR) for decision support"
-	    ],
-	    "outputs": [
-	    "Automated pricing evaluation tool",
-	    "Standardized decision logic for margin exceptions",
-	    "Excel-based merchant score visualization for pricing approval"
-	    ],
-	    "results": [
-	    "Reduced review turnaround time from 7 days to 1 day",
-	    "Improved consistency of pricing approvals"
-	    ],
-	    "tools": [
-	    "Python",
-	    "SQL",
-	    "Excel",
-	    "Performance Metrics Analysis"
-	    ],
-	    "constraints": [
-	    "Policy-driven margin rules",
-	    "Need for consistent merchant evaluation"
-	    ]
-	    },
-	    "tags": {
-	    "skills": [
-	    "Business Analytics",
-	    "Automation",
-	    "Decision Framework Design",
-	    "Data Analysis",
-	    "Excel Visualization"
-	    ],
-	    "domains": [
-	    "E-commerce",
-	    "Pricing Strategy"
-	    ],
-    "work_type": [
-    "Process Automation",
-    "Operational Analytics"
-    ],
-    "interaction_type": [
-    "Business Operations"
-    ]
+    "core": {
+      "problem": "Manual review of merchant gross-margin exception requests led to slow and inconsistent decision-making.",
+      "actions": [
+        "Designed a data-driven decision framework based on merchant performance metrics",
+        "Automated eligibility evaluation logic for special gross-margin rates",
+        "Integrated performance metrics into the pricing review workflow",
+        "Developed Excel scorecards to visualize merchant performance scores against proposed gross-margin rates (GMR) for decision support"
+      ],
+      "outputs": [
+        "Automated pricing evaluation tool",
+        "Standardized decision logic for margin exceptions",
+        "Excel-based merchant score visualization for pricing approval"
+      ],
+      "results": [
+        "Reduced review turnaround time from 7 days to 1 day",
+        "Improved consistency of pricing approvals"
+      ],
+      "tools": [
+        "Python",
+        "SQL",
+        "Excel",
+        "Performance Metrics Analysis"
+      ],
+      "constraints": [
+        "Policy-driven margin rules",
+        "Need for consistent merchant evaluation"
+      ]
+    },
+    "tags": {
+      "skills": [
+        "Business Analytics",
+        "Automation",
+        "Decision Framework Design",
+        "Data Analysis",
+        "Excel Visualization"
+      ],
+      "domains": [
+        "E-commerce",
+        "Pricing Strategy"
+      ],
+      "work_type": [
+        "Process Automation",
+        "Operational Analytics"
+      ],
+      "interaction_type": [
+        "Business Operations"
+      ]
     }
-    }
-    ]
-    
+  }
+]

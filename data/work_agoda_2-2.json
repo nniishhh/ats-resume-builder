@@ -3,10 +3,9 @@
     "project_id": "agoda_task_prioritization_system",
     "title": "Supply Task Prioritization Framework and Dashboard",
     "company": "Agoda",
-    "timeframe": "Jun 2021 - Nov 2021",
     "example_bullets": [
       "Designed and deployed a multi-metric task prioritization system that increased focus on critical supply issues by 25% through data-driven ranking and team training.",
-      "Established a task prioritization framework using multi-variable metrics (hotel vs. ticket scores) and trained supply teams on the new dashboard, driving a 25% increase in the resolution of critical tasks."   
+      "Established a task prioritization framework using multi-variable metrics (hotel vs. ticket scores) and trained supply teams on the new dashboard, driving a 25% increase in the resolution of critical tasks."
     ],
     "core": {
       "problem": "Supply teams lacked a structured, data-driven system to prioritize high-impact hotel and ticket issues.",
@@ -59,11 +58,10 @@
     "project_id": "agoda_roomtype_mismatch_detection",
     "title": "Room-Type Mismatch Detection Using SQL and NLP",
     "company": "Agoda",
-    "timeframe": "Jun 2021 - Nov 2021",
     "example_bullets": [
       "Engineered an AI-driven solution for room-type mismatch detection, leveraging Python and SQL for large-scale data processing and applying NLP techniques (TF-IDF, Levenshtein Distance) to preprocess text, which boosted detection rates by 120%.",
       "Refined dynamic pricing accuracy by combining large-scale analysis with NLP techniques (lemmatization, TF-IDF, edit distance) to detect room-type mismatches, increasing detection by 120%."
-  ],
+    ],
     "core": {
       "problem": "Room-type mismatches between listings caused pricing inaccuracies and availability errors.",
       "actions": [

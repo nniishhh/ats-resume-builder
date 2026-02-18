@@ -2,28 +2,37 @@ import json
 from typing import Any, Dict, List, Sequence, Tuple
 
 
-def build_jd_signal_prompts(jd_text: str) -> Tuple[str, str]:
+def build_jd_summary_prompts(jd_text: str) -> Tuple[str, str]:
     system_prompt = (
-        "You are a precise job-description analyzer. "
-        "Return ONLY valid JSON with no extra text."
+        "You are a Job Description Analyst. Your task is to distill a Job Description down to its core requirements for resume tailoring.\n\n"
+        "OBJECTIVE: Remove noise, but preserve ALL potential ranking signals.\n\n"
+        "=========================================\n"
+        "WHAT TO REMOVE (The \"Fluff\")\n"
+        "=========================================\n"
+        "- Company history, 'About Us', and generic marketing intros.\n"
+        "- Employee benefits (health, 401k, gym, perks).\n"
+        "- Legal disclaimers (EEO statements, background check warnings).\n"
+        "- Generic buzzwords IF they stand alone (e.g., 'Passionate', 'Go-getter').\n\n"
+        "=========================================\n"
+        "WHAT TO KEEP (The \"Signal\")\n"
+        "=========================================\n"
+        "1. HARD SKILLS: All tools, languages, software, and methodologies.\n"
+        "2. RESPONSIBILITIES: What the person will actually do day-to-day.\n"
+        "3. DOMAIN CONTEXT: Specific industries or environments (e.g., 'High-frequency trading', 'Start-up environment', 'B2B SaaS').\n"
+        "4. CONSTRAINTS & SCOPE: \n"
+        "   - Hierarchy information (e.g., 'Reports to VP').\n"
+        "   - Travel requirements or work shifts.\n"
+        "   - Team size or budget responsibility.\n\n"
+        "=========================================\n"
+        "THE \"SAFE KEEP\" RULE\n"
+        "=========================================\n"
+        "If you are unsure whether a sentence is 'fluff' or a 'requirement', KEEP IT.\n"
+        "It is better to include extra text than to delete a potential ATS keyword.\n\n"
+        "Output only the cleaned text. Do not summarize; copy exact phrases."
     )
-    user_prompt = json.dumps(
-        {
-            "task": "Analyze this job description and extract structured signals.",
-            "output_schema": {
-                "role_type": "string — the job title / role type",
-                "required_skills": "list of strings — technical skills, tools, languages mentioned",
-                "domain_keywords": "list of strings — industry/domain terms and concepts",
-            },
-            "rules": [
-                "Extract all technical skills, tools, frameworks, and languages.",
-                "Extract domain-specific terms (e.g. autonomous vehicles, logistics, fintech).",
-                "Infer the role type from the title and description.",
-                "Return ONLY the JSON object. No markdown fences, no explanation.",
-            ],
-            "job_description": jd_text,
-        },
-        ensure_ascii=True,
+    user_prompt = (
+        "Clean this Job Description, keeping all necessary requirements and context:\n\n"
+        f"{jd_text}"
     )
     return system_prompt, user_prompt
 
@@ -119,7 +128,6 @@ def build_bullet_generation_user_prompt(
     company: str,
     min_bullets: int,
     max_bullets: int,
-    jd_signals: Dict[str, Any],
     jd_text: str,
     projects: List[Dict[str, Any]],
     used_verbs: List[str] | None,
@@ -129,8 +137,7 @@ def build_bullet_generation_user_prompt(
         "company": company,
         "min_bullets": min_bullets,
         "max_bullets": max_bullets,
-        "jd_analysis": jd_signals,
-        "job_description": jd_text,
+        "job_description_summary": jd_text,
         "project_evidence": projects,
         "already_used_verbs": used_verbs or [],
     }
@@ -144,6 +151,7 @@ def build_bullet_repair_payload(
     max_bullet_chars: int,
     issues: List[str],
     latest_output: str,
+    jd_text: str,
     used_verbs: List[str] | None,
     projects: List[Dict[str, Any]],
     attempt: int,
@@ -163,6 +171,7 @@ def build_bullet_repair_payload(
             "HARD_LIMIT_min_characters_per_bullet": min_bullet_chars,
             "HARD_LIMIT_max_characters_per_bullet": max_bullet_chars,
         },
+        "job_description_summary": jd_text,
         "already_used_verbs": used_verbs or [],
         "project_evidence": projects,
         "output_rule": "Numbered list only. No explanations.",
@@ -238,14 +247,12 @@ STYLE PRINCIPLES
 
 
 def build_all_bullets_user_prompt(
-    jd_signals: Dict[str, Any],
     jd_text: str,
     companies_spec: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
     return {
         "task": "Generate resume bullets for ALL companies below in one JSON response.",
-        "jd_analysis": jd_signals,
-        "job_description": jd_text,
+        "job_description_summary": jd_text,
         "companies": companies_spec,
     }
 

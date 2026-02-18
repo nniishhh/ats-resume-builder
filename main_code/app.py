@@ -39,6 +39,7 @@ from main_code.resume_bullet_workflow import (
     select_academic_projects_by_topics,
     select_top_academic_topics_for_jd,
     select_top_courses_for_jd,
+    summarize_job_description,
 )
 
 WORK_DIR = Path(os.getenv("RESUME_WORK_DIR", ".")).resolve()
@@ -90,14 +91,20 @@ def check_password() -> bool:
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
 
-def render_sidebar(work_files: list[Path]) -> tuple[str, bool, str]:
-    """Render sidebar settings. Returns (model, log_prompts, generation_mode)."""
+def render_sidebar(
+    work_files: list[Path],
+) -> tuple[str, bool, str]:
+    """Render sidebar settings."""
     with st.sidebar:
         st.header("Settings")
         model = st.text_input(
-            "LLM Model",
+            "Bullet Generator Model",
             value=os.getenv("LITELLM_MODEL", DEFAULT_MODEL),
-            help="LiteLLM model identifier (e.g. vertex_ai/gemini-3-pro-preview)",
+            help=(
+                "Model used only for bullet generation/repair. "
+                "Examples: vertex_ai/gemini-3-flash-preview or openai/gpt-5.2. "
+                "Other tasks use Gemini 2.5 Pro."
+            ),
         )
         log_prompts = st.checkbox("Log prompts to disk", value=False)
         generation_mode = st.selectbox(
@@ -372,8 +379,12 @@ def main() -> None:
                 new_tex = replace_experience_bullets(tex_content, edited_bullets)
                 selected_courses = st.session_state.get("selected_courses")
                 if not selected_courses:
-                    selected_courses = select_top_courses_for_jd(
+                    jd_summary = summarize_job_description(
                         jd_text=jd_text.strip(),
+                        model=model,
+                    )
+                    selected_courses = select_top_courses_for_jd(
+                        jd_text=jd_summary,
                         model=model,
                     )
                     st.session_state.selected_courses = selected_courses
@@ -385,8 +396,12 @@ def main() -> None:
                 if not selected_academic_projects:
                     academic_file = DATA_DIR / DEFAULT_ACADEMIC_PROJECT_FILE
                     academic_projects = read_projects(academic_file)
-                    selected_topics = select_top_academic_topics_for_jd(
+                    jd_summary = summarize_job_description(
                         jd_text=st.session_state.get("jd_text", jd_text).strip(),
+                        model=model,
+                    )
+                    selected_topics = select_top_academic_topics_for_jd(
+                        jd_text=jd_summary,
                         project_list=academic_projects,
                         model=model,
                     )

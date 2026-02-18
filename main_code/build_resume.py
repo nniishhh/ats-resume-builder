@@ -24,7 +24,7 @@ from main_code.resume_bullet_workflow import (
     DEFAULT_GENERATION_MODE,
     DEFAULT_MODEL,
     GENERATION_MODES,
-    extract_jd_signals,
+    summarize_job_description,
     run_all_with_full_selection,
 )
 
@@ -58,7 +58,10 @@ def _parse_header_body(content: str) -> dict | None:
     return meta
 
 
-def parse_jd_metadata(jd_path: Path, model: str) -> Tuple[str, str, str]:
+def parse_jd_metadata(
+    jd_path: Path,
+    model: str,
+) -> Tuple[str, str, str]:
     """Return (company_name, position_name, raw_jd_text) from JD file.
 
     Supported formats:
@@ -87,11 +90,43 @@ def parse_jd_metadata(jd_path: Path, model: str) -> Tuple[str, str, str]:
 
     if not position_name:
         print("[info] position_name not in JD file; extracting via LLM …", file=sys.stderr)
-        signals = extract_jd_signals(jd_text, model=model)
-        position_name = signals.get("role_type", "unknown")
+        jd_summary = summarize_job_description(jd_text=jd_text, model=model)
+        position_name = infer_position_name_from_jd(jd_summary)
         print(f"[info] Extracted position: {position_name}", file=sys.stderr)
 
     return company_name, position_name, jd_text
+
+
+def infer_position_name_from_jd(jd_text: str) -> str:
+    """Best-effort title extraction from JD text."""
+    title_pattern = re.compile(
+        r"(?i)\b(?:position|role|title)\s*[:\-]\s*([A-Za-z0-9/,&()\- ]+)"
+    )
+    match = title_pattern.search(jd_text)
+    if match:
+        candidate = re.sub(r"\s+", " ", match.group(1)).strip(" -:")
+        if candidate:
+            return candidate[:80]
+
+    role_keywords = (
+        "engineer",
+        "scientist",
+        "analyst",
+        "manager",
+        "intern",
+        "consultant",
+        "developer",
+        "specialist",
+    )
+    for line in jd_text.splitlines():
+        candidate = re.sub(r"^[\-\*\d\.\)\s]+", "", line).strip()
+        lower = candidate.lower()
+        if not candidate or len(candidate.split()) > 14:
+            continue
+        if any(keyword in lower for keyword in role_keywords):
+            return candidate[:80]
+
+    return "unknown"
 
 
 def slugify(text: str) -> str:
@@ -406,7 +441,10 @@ def build_resume(
     Returns (tex_path, pdf_path_or_None).
     """
     # 1. Parse JD metadata
-    company_name, position_name, _ = parse_jd_metadata(jd_path, model)
+    company_name, position_name, _ = parse_jd_metadata(
+        jd_path=jd_path,
+        model=model,
+    )
     print(
         f"[info] Target: {company_name} — {position_name}",
         file=sys.stderr,
