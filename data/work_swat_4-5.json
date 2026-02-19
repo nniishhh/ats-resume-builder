@@ -60,7 +60,7 @@
     "company": "SWAT Mobility",
     "example_bullets": [
       "Deployed a end-to-end AI-driven solution to fine-tune BERT/RoBERTa NLP models for Named Entity Recognition, standardizing logistics address data with 98% extraction accuracy and enhancing routing reliability.",
-      "Engineered production ML pipeline for DHL Turkey by fine‑tuning BERT/RoBERTa NER to standardize noisy address data; built CI/CD, and Git workflows; 98% entity extraction accuracy; improved data quality and downstream routing robustness.",
+      "Engineered production ML pipeline for DHL Turkey by fine‑tuning BERT/RoBERTa NER to standardize noisy address data; built CI/CD, and Git workflows; 98% entity extraction accuracy; improved data quality and downstream routing robustness."
     ],
     "core": {
       "problem": "Noisy and unstructured address data reduced routing robustness and downstream operational reliability.",

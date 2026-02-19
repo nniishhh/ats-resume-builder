@@ -289,14 +289,23 @@ def replace_academic_projects(
     selected_projects: List[Dict[str, Any]],
 ) -> str:
     """Replace the Academic Projects section using selected project JSON records."""
+    def _normalize_project_link(raw_link: Any) -> str:
+        link = str(raw_link or "").strip()
+        if not link or link.lower() in {"n/a", "na", "none", "null", "-"}:
+            return ""
+        if not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", link):
+            link = f"https://{link}"
+        return link
+
     valid_projects: List[Dict[str, Any]] = []
     for project in selected_projects:
         topic = str(project.get("Topic", "")).strip()
         bullets = [
             str(item).strip() for item in project.get("Bullet", []) if str(item).strip()
         ]
+        link = _normalize_project_link(project.get("Link", ""))
         if topic and bullets:
-            valid_projects.append({"Topic": topic, "Bullet": bullets})
+            valid_projects.append({"Topic": topic, "Bullet": bullets, "Link": link})
     if not valid_projects:
         return tex_content
 
@@ -317,7 +326,13 @@ def replace_academic_projects(
         if idx > 0:
             lines.extend(["", r"\vspace{6pt}", ""])
         topic = escape_latex(project["Topic"])
-        lines.append(rf"\noindent \textbf{{{topic}}}")
+        link = project.get("Link", "")
+        if link:
+            lines.append(
+                rf"\noindent \textbf{{{topic}}} \hfill \href{{{link}}}{{\textit{{Project Link}}}}"
+            )
+        else:
+            lines.append(rf"\noindent \textbf{{{topic}}}")
         lines.append(r"\begin{itemize}")
         for bullet in project["Bullet"]:
             lines.append(f"    \\item {escape_latex(bullet)}")
