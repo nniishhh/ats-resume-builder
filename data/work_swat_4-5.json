@@ -5,14 +5,13 @@
     "title": "Geospatial Mobility Analytics for Public Transit Optimization",
     "company": "SWAT Mobility",
     "example_bullets": [
-      "Transformed over 2M GPS trajectories using Python and SQL for comprehensive data processing and analysis, generating interactive geospatial dashboards that informed stakeholders to reduce off-peak transit trips by 30%.",
       "Pioneered interactive geospatial dashboards (Kepler.gl, MovingPandas) from 2M GPS records to optimize bus schedules and reveal mobility trends in Japan’s transit system; insights shared with government stakeholders reduced off-peak trips by 30%.",
       "Pioneered interactive geospatial visualizations (Kepler.gl) by extracting and aggregating 2M+ GPS records using SQL and Python; revealed mobility trends in Japan’s transit system that empowered government stakeholders to reduce off-peak trips by 30%."
     ],
     "core": {
       "problem": "Transit systems required data-driven insights to optimize scheduling and reduce inefficient off-peak operations.",
       "actions": [
-        "Extracted and aggregated 2M+ GPS trajectory records using SQL and Python",
+        "Extracted and aggregated 2M+ GPS trajectory records",
         "Built interactive geospatial dashboards using Kepler.gl and MovingPandas",
         "Analyzed mobility patterns to identify network inefficiencies",
         "Shared insights with government stakeholders to inform scheduling decisions"
@@ -60,9 +59,8 @@
     "title": "Production Address Standardization Pipeline for DHL Turkey",
     "company": "SWAT Mobility",
     "example_bullets": [
-      "Deployed a production-grade AI-driven solution using Python to fine-tune BERT/RoBERTa NLP models for Named Entity Recognition, standardizing logistics address data with 98% extraction accuracy and enhancing routing reliability.",
-      "Engineered and launched a production-grade BERT/RoBERTa deep learning NER pipeline using Python and Git, leveraging MLOps CI/CD workflows to standardize noisy logistics address data with 98% extraction accuracy, improving downstream routing reliability.",
-      "Built and deployed a production-grade BERT/RoBERTa NER pipeline using Python to standardize noisy logistics address data, enhancing data initiatives and operational excellence by achieving 98% extraction accuracy and improving data quality."
+      "Deployed a end-to-end AI-driven solution to fine-tune BERT/RoBERTa NLP models for Named Entity Recognition, standardizing logistics address data with 98% extraction accuracy and enhancing routing reliability.",
+      "Engineered production ML pipeline for DHL Turkey by fine‑tuning BERT/RoBERTa NER to standardize noisy address data; built CI/CD, and Git workflows; 98% entity extraction accuracy; improved data quality and downstream routing robustness.",
     ],
     "core": {
       "problem": "Noisy and unstructured address data reduced routing robustness and downstream operational reliability.",
@@ -184,7 +182,8 @@
     "company": "SWAT Mobility",
     "example_bullets": [
       "Architected a Python/Windmill-based operational monitoring system with Slack-integrated KPI alerts and automated data validation checks, eliminating 4 hours of daily manual investigation effort.",
-      "Designed a proactive performance reporting framework that centralized daily planning metrics in Slack, accelerating cross-team issue triage and reducing reactive escalation workload by 4 hours per day."
+      "Designed a proactive performance reporting framework that centralized daily planning metrics in Slack, accelerating cross-team issue triage and reducing reactive escalation workload by 4 hours per day.",
+      "Created an automated Slack bot using the workflow automation platform Windmill to deliver real-time task status, performance metrics, and data-validation alerts, reducing support time from 4 hours to real time."
     ],
     "core": {
       "problem": "Client-reported system performance issues required reactive investigation, with customer support and engineers manually coordinating root-cause analysis, consuming ~4 hours daily and delaying response time.",
