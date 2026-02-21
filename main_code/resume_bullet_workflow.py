@@ -93,7 +93,7 @@ DEFAULT_TASK_LLM_SETTINGS: Dict[str, Dict[str, Any]] = {
         "temperature": 0.3,
     },
     LLM_TASK_BULLETS_ALL: {
-        "temperature": 0.3,
+        "temperature": 0.5,
     },
     LLM_TASK_COURSE_SELECTION: {
         "model": DEFAULT_NON_BULLET_MODEL,

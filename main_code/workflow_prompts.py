@@ -121,7 +121,16 @@ STYLE PRINCIPLES
 - Prefer concrete nouns and outcomes over vague corporate phrasing.
 - Use strong, varied action verbs.
 - When a bullet includes a numeric or measurable result, you should place that result at the end of the sentence.
-- Avoid repetition."""
+- Avoid repetition.
+
+========================================
+LEXICAL DIVERSITY RULE
+========================================
+- Avoid repeating the same connector or phrasing across bullets.
+- Ensure lexical variety in verbs, connectors, and clause structure.
+- Do NOT repeat the same tool in every bullet when context is already clear.
+- After an initial explicit mention, tools may be abstracted into system-level phrasing.
+- Reintroduce a tool only when it adds meaningful technical clarity or differentiation."""
 
 
 def build_bullet_generation_user_prompt(
@@ -140,6 +149,13 @@ def build_bullet_generation_user_prompt(
         "job_description_summary": jd_text,
         "project_evidence": projects,
         "already_used_verbs": used_verbs or [],
+        "lexical_diversity_rules": [
+            "Avoid repeating the same connector or phrasing across bullets.",
+            "Ensure lexical variety in verbs, connectors, and clause structure.",
+            "Do NOT repeat the same tool in every bullet when context is already clear.",
+            "After an initial explicit mention, tools may be abstracted into system-level phrasing.",
+            "Reintroduce a tool only when it adds meaningful technical clarity or differentiation.",
+        ],
     }
 
 
@@ -174,6 +190,13 @@ def build_bullet_repair_payload(
         "job_description_summary": jd_text,
         "already_used_verbs": used_verbs or [],
         "project_evidence": projects,
+        "lexical_diversity_rules": [
+            "Avoid repeating the same connector or phrasing across bullets.",
+            "Ensure lexical variety in verbs, connectors, and clause structure.",
+            "Do NOT repeat the same tool in every bullet when context is already clear.",
+            "After an initial explicit mention, tools may be abstracted into system-level phrasing.",
+            "Reintroduce a tool only when it adds meaningful technical clarity or differentiation.",
+        ],
         "output_rule": "Numbered list only. No explanations.",
     }
 
@@ -243,7 +266,16 @@ STYLE PRINCIPLES
 - Prefer concrete nouns and outcomes over vague corporate phrasing.
 - Use strong, varied action verbs.
 - When a bullet includes a numeric or measurable result, you should place that result at the end of the sentence.
-- Avoid repetition within each company."""
+- Avoid repetition within each company.
+
+========================================
+LEXICAL DIVERSITY RULE
+========================================
+- Avoid repeating the same connector or phrasing across bullets.
+- Ensure lexical variety in verbs, connectors, and clause structure.
+- Do NOT repeat the same tool in every bullet when context is already clear.
+- After an initial explicit mention, tools may be abstracted into system-level phrasing.
+- Reintroduce a tool only when it adds meaningful technical clarity or differentiation."""
 
 
 def build_all_bullets_user_prompt(
@@ -254,6 +286,13 @@ def build_all_bullets_user_prompt(
         "task": "Generate resume bullets for ALL companies below in one JSON response.",
         "job_description_summary": jd_text,
         "companies": companies_spec,
+        "lexical_diversity_rules": [
+            "Avoid repeating the same connector or phrasing across bullets.",
+            "Ensure lexical variety in verbs, connectors, and clause structure.",
+            "Do NOT repeat the same tool in every bullet when context is already clear.",
+            "After an initial explicit mention, tools may be abstracted into system-level phrasing.",
+            "Reintroduce a tool only when it adds meaningful technical clarity or differentiation.",
+        ],
     }
 
 

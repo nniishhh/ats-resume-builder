@@ -260,6 +260,22 @@ def render_bullet_editor(bullets: dict[str, list[str]]) -> dict[str, list[str]]:
     return edited
 
 
+def render_combined_bullets(bullets: dict[str, list[str]]) -> None:
+    """Render copy-friendly combined bullet blocks per company."""
+    st.markdown("**Copy-ready Combined Bullets (per company)**")
+    for company, bullet_list in bullets.items():
+        display = company.replace("_", " ").title()
+        combined = "\n".join(
+            f"- {bullet.strip()}" for bullet in bullet_list if bullet.strip()
+        )
+        st.text_area(
+            f"{display} — combined",
+            value=combined,
+            key=f"combined_{company}",
+            height=140,
+        )
+
+
 # ── Main App ──────────────────────────────────────────────────────────────────
 
 
@@ -368,6 +384,7 @@ def main() -> None:
             st.write(f"- {topic}")
 
     edited_bullets = render_bullet_editor(st.session_state.bullets)
+    render_combined_bullets(edited_bullets)
 
     st.divider()
     st.header("4 — Build PDF")
