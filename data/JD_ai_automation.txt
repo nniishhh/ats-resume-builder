@@ -1,0 +1,27 @@
+company_name: Reference Resume
+position_name: AI Automation
+---
+About the role
+We are seeking an AI and Automation professional who can build practical, business-facing intelligent systems that combine analytics, workflow automation, and applied machine learning. This role sits at the intersection of data, operations, and AI product execution.
+
+Key responsibilities
+- Translate ambiguous business questions into scalable analytical workflows and decision-support systems.
+- Build automation that reduces manual operational work and improves response speed, monitoring, and reporting.
+- Develop AI-powered assistants, agents, or copilots that turn natural-language input into actionable outputs such as analysis, summaries, recommendations, or workflow steps.
+- Use Python, SQL, and data tools to transform large datasets into production-ready insights.
+- Design dashboards, reports, and visualizations to communicate performance trends, anomalies, and business opportunities.
+- Collaborate with operations, product, and business stakeholders to deploy solutions that improve efficiency and adoption.
+- Evaluate and integrate AI/ML/NLP techniques where they create measurable value.
+
+Preferred qualifications
+- Experience with workflow automation, orchestration, or internal tooling.
+- Experience with LLM applications, prompt engineering, retrieval-augmented generation, or agentic systems.
+- Strong Python and SQL skills, with hands-on use of Pandas or similar analytical tooling.
+- Experience building analytics products, dashboards, experimentation workflows, or business intelligence assets.
+- Familiarity with OCR, NLP, classification, recommendation systems, or applied ML.
+- Ability to communicate technical findings clearly and tie them to business impact.
+
+What success looks like
+- Delivering automation that meaningfully reduces manual effort and turnaround time.
+- Shipping AI-enabled systems that improve business decision-making and user productivity.
+- Building reusable analytical workflows that connect data extraction, modeling, visualization, and narrative insight generation.

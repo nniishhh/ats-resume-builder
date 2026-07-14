@@ -31,6 +31,7 @@ from main_code.resume_bullet_workflow import (
     DEFAULT_GENERATION_MODE,
     DEFAULT_MODEL,
     GENERATION_MODES,
+    MODEL_CHOICES,
     MIN_BULLET_CHARS,
     MAX_BULLET_CHARS,
     parse_filename,
@@ -97,15 +98,32 @@ def render_sidebar(
     """Render sidebar settings."""
     with st.sidebar:
         st.header("Settings")
-        model = st.text_input(
-            "Bullet Generator Model",
-            value=os.getenv("LITELLM_MODEL", DEFAULT_MODEL),
+        custom_label = "Custom (type manually)"
+        configured_model = os.getenv("LITELLM_MODEL", DEFAULT_MODEL)
+        dropdown_options = MODEL_CHOICES + [custom_label]
+        default_index = (
+            MODEL_CHOICES.index(configured_model)
+            if configured_model in MODEL_CHOICES
+            else len(MODEL_CHOICES)
+        )
+        selected = st.selectbox(
+            "Model",
+            options=dropdown_options,
+            index=default_index,
             help=(
-                "Model used only for bullet generation/repair. "
-                "Examples: vertex_ai/gemini-3-flash-preview or openai/gpt-5.2. "
-                "Other tasks use Gemini 2.5 Pro."
+                "Model for all generation tasks. "
+                "OpenAI (openai/...) needs OPENAI_API_KEY; "
+                "Vertex (vertex_ai/...) needs VERTEXAI_PROJECT."
             ),
         )
+        if selected == custom_label:
+            model = st.text_input(
+                "Custom model name",
+                value="" if configured_model in MODEL_CHOICES else configured_model,
+                placeholder="e.g. openai/gpt-4o-mini",
+            ).strip() or DEFAULT_MODEL
+        else:
+            model = selected
         log_prompts = st.checkbox("Log prompts to disk", value=False)
         generation_mode = st.selectbox(
             "Generation Mode",
@@ -268,10 +286,12 @@ def render_combined_bullets(bullets: dict[str, list[str]]) -> None:
         combined = "\n".join(
             f"- {bullet.strip()}" for bullet in bullet_list if bullet.strip()
         )
+        combined_key = f"combined_{company}"
+        # Keep this widget synced to latest edited/generated bullets each rerun.
+        st.session_state[combined_key] = combined
         st.text_area(
             f"{display} — combined",
-            value=combined,
-            key=f"combined_{company}",
+            key=combined_key,
             height=140,
         )
 

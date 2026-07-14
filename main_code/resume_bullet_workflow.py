@@ -21,6 +21,7 @@ if __package__ in (None, ""):
 
 from main_code.workflow_prompts import (
     build_academic_project_selection_prompts,
+    build_all_bullets_repair_payload,
     build_all_bullets_system_prompt,
     build_all_bullets_user_prompt,
     build_bullet_generation_system_prompt,
@@ -37,12 +38,22 @@ if os.getenv("LITELLM_DEBUG"):
 else:
     logging.getLogger("litellm").setLevel(logging.WARNING)
 
+# Drop provider-unsupported params (e.g. custom temperature on OpenAI gpt-5
+# reasoning models) instead of raising, so non-bullet tasks using temperature=0.0
+# do not crash.
+litellm.drop_params = True
+
 FILENAME_PATTERN = re.compile(
     r"^work_(?P<company>.+)_(?P<min_bullets>\d+)-(?P<max_bullets>\d+)\.json$"
 )
-DEFAULT_MODEL = "vertex_ai/gemini-3-flash-preview"
-# DEFAULT_MODEL = "vertex_ai/gemini-2.5-pro"
-DEFAULT_NON_BULLET_MODEL = "vertex_ai/gemini-3-flash-preview"
+DEFAULT_MODEL = "openai/gpt-5.2"
+DEFAULT_NON_BULLET_MODEL = "openai/gpt-5.2"
+MODEL_CHOICES = [
+    "openai/gpt-5.2",
+    "openai/gpt-4o",
+    "vertex_ai/gemini-3-pro-preview",
+    "vertex_ai/gemini-3-flash-preview",
+]
 
 MIN_BULLET_CHARS = 200
 MAX_BULLET_CHARS = 240
@@ -881,6 +892,20 @@ def generate_bullets(
     raise ValueError("Model did not return parseable numbered bullets.")
 
 
+def _parse_all_bullets_json(raw: str) -> Dict[str, Any]:
+    cleaned = raw.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```\w*\n?", "", cleaned)
+        cleaned = re.sub(r"\n?```$", "", cleaned)
+    try:
+        results = json.loads(cleaned)
+    except json.JSONDecodeError:
+        raise ValueError("Model did not return valid JSON.")
+    if not isinstance(results, dict):
+        raise ValueError("Model output is not a JSON object.")
+    return results
+
+
 def generate_all_bullets(
     jd_text: str,
     company_data: List[Dict[str, Any]],
@@ -935,18 +960,88 @@ def generate_all_bullets(
         max_tokens=max_tokens,
     )
 
-    cleaned = raw.strip()
-    if cleaned.startswith("```"):
-        cleaned = re.sub(r"^```\w*\n?", "", cleaned)
-        cleaned = re.sub(r"\n?```$", "", cleaned)
+    results = _parse_all_bullets_json(raw)
 
-    try:
-        results = json.loads(cleaned)
-    except json.JSONDecodeError:
-        raise ValueError("Model did not return valid JSON.")
+    # Code-based length enforcement (len()) with a single repair round,
+    # mirroring the sequential path.
+    bounds_by_company = {
+        c["company"]: (c["min_bullets"], c["max_bullets"]) for c in company_data
+    }
 
-    if not isinstance(results, dict):
-        raise ValueError("Model output is not a JSON object.")
+    def _validate_all(res: Dict[str, Any]) -> Dict[str, List[str]]:
+        issues_by_company: Dict[str, List[str]] = {}
+        for company, (min_b, max_b) in bounds_by_company.items():
+            bullets = res.get(company)
+            if not isinstance(bullets, list):
+                bullets = next(
+                    (
+                        value
+                        for key, value in res.items()
+                        if key.strip().lower() == company.strip().lower()
+                        and isinstance(value, list)
+                    ),
+                    None,
+                )
+            if not isinstance(bullets, list):
+                issues_by_company[company] = [
+                    f"Missing bullets for company '{company}'."
+                ]
+                continue
+            issues = validate_bullets(
+                [str(bullet) for bullet in bullets], min_b, max_b
+            )
+            if issues:
+                issues_by_company[company] = issues
+        return issues_by_company
+
+    issues_by_company = _validate_all(results)
+    if issues_by_company:
+        print(
+            "[info] single_prompt length issues; running one repair for: "
+            f"{list(issues_by_company.keys())}",
+            file=sys.stderr,
+        )
+        repair_payload = build_all_bullets_repair_payload(
+            jd_text=jd_text,
+            companies_spec=companies_spec,
+            issues_by_company=issues_by_company,
+            previous_output=raw,
+            min_bullet_chars=MIN_BULLET_CHARS,
+            max_bullet_chars=MAX_BULLET_CHARS,
+        )
+        if log_prompts:
+            repair_log_path = write_prompt_log(
+                system_prompt=system_prompt,
+                user_prompt=repair_payload,
+                stage="repair",
+            )
+            print(
+                f"[prompt-log] repair prompts saved to: {repair_log_path}",
+                file=sys.stderr,
+            )
+        repair_messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": json.dumps(repair_payload, ensure_ascii=True)},
+        ]
+        repaired_raw = call_vertex_litellm(
+            model=task_model,
+            messages=repair_messages,
+            temperature=task_temperature,
+            max_tokens=max_tokens,
+        )
+        try:
+            repaired = _parse_all_bullets_json(repaired_raw)
+        except ValueError:
+            repaired = None
+        if repaired is not None:
+            results = repaired
+            remaining = _validate_all(results)
+            if remaining:
+                print(
+                    "[warning] single_prompt bullets still out of range after "
+                    f"one repair: {remaining}",
+                    file=sys.stderr,
+                )
 
     return results
 
@@ -1150,7 +1245,7 @@ def run_all_with_full_selection(
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Generate resume bullets using Vertex AI via LiteLLM."
+        description="Generate resume bullets using OpenAI (or other providers) via LiteLLM."
     )
     parser.add_argument(
         "--jd",

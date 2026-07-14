@@ -78,8 +78,10 @@ OUTPUT CONTRACT (NON-NEGOTIABLE)
 ========================================
 HARD LENGTH RULE (NON-NEGOTIABLE)
 ========================================
-- Each bullet MUST be between {min_bullet_chars} and {max_bullet_chars} characters (including spaces).
-- Bullets outside this range are invalid.
+- Every bullet MUST satisfy this exact condition:
+      {min_bullet_chars} <= len(bullet) <= {max_bullet_chars}
+- len(bullet) is Python's character count of the bullet string, including spaces.
+- If the condition is False for any bullet, that bullet is invalid and must be rewritten.
 
 ========================================
 TRUTHFULNESS
@@ -101,6 +103,14 @@ PROFESSIONAL ABSTRACTION
 ========================================
 You may elevate specific implementations into accurate higher-level professional terminology when supported by evidence (e.g., "pipeline," "system," "AI","ML").
 Do NOT exaggerate beyond what the evidence supports.
+
+========================================
+EVIDENCE FIELD GUIDE
+========================================
+- "example_bullets" are human-proofread, trusted references: treat their claims and phrasing as authoritative.
+- "harvested_bullets" are additional strong variants: use them for phrasing inspiration, same trust as other evidence.
+- Some "results" entries include "(framing variants: ...)": these are alternative truthful phrasings of the SAME metric. Pick exactly ONE framing per metric based on JD fit; never combine variants or state the metric twice.
+- "keywords" are ATS vocabulary hints, not facts; weave them in only where the evidence supports them.
 
 ========================================
 JOB DESCRIPTION ALIGNMENT
@@ -186,6 +196,9 @@ def build_bullet_repair_payload(
             "max_bullets": max_bullets,
             "HARD_LIMIT_min_characters_per_bullet": min_bullet_chars,
             "HARD_LIMIT_max_characters_per_bullet": max_bullet_chars,
+            "length_condition": (
+                f"{min_bullet_chars} <= len(bullet) <= {max_bullet_chars}"
+            ),
         },
         "job_description_summary": jd_text,
         "already_used_verbs": used_verbs or [],
@@ -223,8 +236,10 @@ Example:
 ========================================
 HARD LENGTH RULE (NON-NEGOTIABLE)
 ========================================
-- Each bullet MUST be between {min_bullet_chars} and {max_bullet_chars} characters (including spaces).
-- Bullets outside this range are invalid.
+- Every bullet MUST satisfy this exact condition:
+      {min_bullet_chars} <= len(bullet) <= {max_bullet_chars}
+- len(bullet) is Python's character count of the bullet string, including spaces.
+- If the condition is False for any bullet, that bullet is invalid and must be rewritten.
 
 ========================================
 TRUTHFULNESS
@@ -246,6 +261,14 @@ PROFESSIONAL ABSTRACTION
 ========================================
 You may elevate specific implementations into accurate higher-level professional terminology when supported by evidence (e.g., "pipeline," "system," "AI","ML").
 Do NOT exaggerate beyond what the evidence supports.
+
+========================================
+EVIDENCE FIELD GUIDE
+========================================
+- "example_bullets" are human-proofread, trusted references: treat their claims and phrasing as authoritative.
+- "harvested_bullets" are additional strong variants: use them for phrasing inspiration, same trust as other evidence.
+- Some "results" entries include "(framing variants: ...)": these are alternative truthful phrasings of the SAME metric. Pick exactly ONE framing per metric based on JD fit; never combine variants or state the metric twice.
+- "keywords" are ATS vocabulary hints, not facts; weave them in only where the evidence supports them.
 
 ========================================
 JOB DESCRIPTION ALIGNMENT
@@ -293,6 +316,34 @@ def build_all_bullets_user_prompt(
             "After an initial explicit mention, tools may be abstracted into system-level phrasing.",
             "Reintroduce a tool only when it adds meaningful technical clarity or differentiation.",
         ],
+    }
+
+
+def build_all_bullets_repair_payload(
+    jd_text: str,
+    companies_spec: List[Dict[str, Any]],
+    issues_by_company: Dict[str, List[str]],
+    previous_output: str,
+    min_bullet_chars: int,
+    max_bullet_chars: int,
+) -> Dict[str, Any]:
+    return {
+        "instruction": (
+            "The previous JSON output violated constraints for some companies. "
+            "Regenerate the ENTIRE JSON object for ALL companies so every bullet "
+            "satisfies all constraints. Do not explain. Return only the JSON object."
+        ),
+        "length_condition": (
+            f"{min_bullet_chars} <= len(bullet) <= {max_bullet_chars}"
+        ),
+        "issues_by_company": issues_by_company,
+        "previous_output": previous_output,
+        "job_description_summary": jd_text,
+        "companies": companies_spec,
+        "output_rule": (
+            "Return only a single JSON object: keys = company names, "
+            "values = arrays of bullet strings. No markdown, no code fences."
+        ),
     }
 
 

@@ -73,7 +73,7 @@ AI-powered workflow that generates tailored, ATS-optimized resume bullets from j
 
 **Output Format:**
 - Numbered bullets (1. ..., 2. ..., etc.)
-- Each bullet: 190-220 characters
+- Each bullet: 200-240 characters
 - Unique starting action verbs per company
 - Measurable impact at end (when available)
 
@@ -101,9 +101,12 @@ AI-powered workflow that generates tailored, ATS-optimized resume bullets from j
 
 ```bash
 uv sync
-export VERTEXAI_PROJECT="your-project"
-# Optional (defaults to "global" in code)
-export VERTEXAI_LOCATION="global"
+# Default provider is OpenAI
+export OPENAI_API_KEY="sk-..."
+
+# Optional: to use Vertex/Gemini models instead, set these and pick a vertex_ai/... model
+# export VERTEXAI_PROJECT="your-project"
+# export VERTEXAI_LOCATION="global"  # defaults to "global" in code
 ```
 
 ### Generate Resume
@@ -127,9 +130,9 @@ uv run streamlit run main_code/app.py
 
 ## Configuration
 
-- **Model**: Defaults to `vertex_ai/gemini-3-pro-preview` (configurable via `--model` or `LITELLM_MODEL`)
-- **Vertex Location**: Defaults to `global` if `VERTEXAI_LOCATION` is unset
-- **Bullet Length**: 190-230 characters (hard constraint)
+- **Model**: Defaults to `openai/gpt-5.2` (configurable via `--model`, `LITELLM_MODEL`, or the UI dropdown)
+- **Vertex Location**: Defaults to `global` if `VERTEXAI_LOCATION` is unset (only used for `vertex_ai/...` models)
+- **Bullet Length**: 200-240 characters (hard constraint)
 - **Max Repair Attempts**: 2 per company
 - **Generation Mode**: `sequential` by default (`single_prompt` also available)
 - **Output Directory**: `output/` (configurable via `--output-dir`)

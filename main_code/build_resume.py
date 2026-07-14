@@ -346,7 +346,7 @@ def tighten_spacing(tex: str) -> str:
     """Adjust spacing and typesetting for generated resumes.
 
     The template (main.tex) is tuned for shorter original bullets.
-    Generated bullets can be up to MAX_BULLET_CHARS (~250) characters,
+    Generated bullets can be up to MAX_BULLET_CHARS (240) characters,
     so we: (a) compress vertical gaps, (b) suppress mid-word hyphenation
     that looks unprofessional on a resume.
     """
