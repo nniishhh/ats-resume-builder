@@ -210,7 +210,7 @@ def summarize_job_description(jd_text: str, model: str) -> str:
         fallback_model=model,
     )
     system_prompt, user_prompt = build_jd_summary_prompts(jd_text)
-    raw = call_vertex_litellm(
+    raw = call_llm(
         model=task_model,
         messages=[
             {"role": "system", "content": system_prompt},
@@ -394,7 +394,7 @@ def select_top_courses_for_jd(
     )
 
     try:
-        raw = call_vertex_litellm(
+        raw = call_llm(
             model=task_model,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -522,7 +522,7 @@ def select_top_academic_topics_for_jd(
     )
 
     try:
-        raw = call_vertex_litellm(
+        raw = call_llm(
             model=task_model,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -713,7 +713,7 @@ def _is_vertex_model(model: str) -> bool:
     return model.strip().lower().startswith("vertex_ai/")
 
 
-def call_vertex_litellm(
+def call_llm(
     model: str,
     messages: List[Dict[str, str]],
     temperature: float = 0.3,
@@ -820,7 +820,7 @@ def generate_bullets(
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": json.dumps(user_prompt, ensure_ascii=True)},
     ]
-    first_pass = call_vertex_litellm(
+    first_pass = call_llm(
         model=generation_model,
         messages=messages,
         temperature=generation_temperature,
@@ -865,7 +865,7 @@ def generate_bullets(
                 f"[prompt-log] repair prompts saved to: {repair_log_path}", file=sys.stderr
             )
 
-        latest_output = call_vertex_litellm(
+        latest_output = call_llm(
             model=repair_model,
             messages=repair_messages,
             temperature=repair_temperature,
@@ -953,7 +953,7 @@ def generate_all_bullets(
         {"role": "user", "content": json.dumps(user_prompt, ensure_ascii=True)},
     ]
 
-    raw = call_vertex_litellm(
+    raw = call_llm(
         model=task_model,
         messages=messages,
         temperature=task_temperature,
@@ -1023,7 +1023,7 @@ def generate_all_bullets(
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": json.dumps(repair_payload, ensure_ascii=True)},
         ]
-        repaired_raw = call_vertex_litellm(
+        repaired_raw = call_llm(
             model=task_model,
             messages=repair_messages,
             temperature=task_temperature,

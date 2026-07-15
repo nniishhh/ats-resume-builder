@@ -1,115 +1,121 @@
 # ATS Resume Builder
 
-AI-powered workflow that generates tailored, ATS-optimized resume bullets from job descriptions using LLMs, then compiles professional PDF resumes.
+AI-powered workflow that generates tailored, ATS-optimized resume bullets from a job description, selects the most relevant coursework and academic projects, then compiles a professional PDF resume. Model calls go through [LiteLLM](https://github.com/BerriAI/litellm), so any provider works; the default is `openai/gpt-5.2`.
 
 ## How It Works
 
 ### Workflow Overview
 
-1. **Job Description Analysis** → Extract key signals (role type, required skills, domain keywords)
-2. **Per-Company Generation** → Generate tailored bullets for each work experience using validated LLM calls
-3. **Validation & Repair** → Enforce constraints (length, format, uniqueness) with automatic retry loops
-4. **Template Injection** → Inject generated bullets into LaTeX resume template
-5. **PDF Compilation** → Compile to professional PDF using TeX
-
-### Key Features
-
-- **ATS Optimization**: Actively reframes work using JD keywords and terminology for maximum ATS relevance
-- **Per-Company Generation**: Each company's bullets are generated separately with full validation/repair cycles
-- **Constraint Enforcement**: Hard limits on bullet length (190-220 chars), unique action verbs, measurable impact placement
-- **Evidence-Based**: Stays grounded in provided project JSON evidence — no fabrication
-- **Lexical Diversity**: Varies vocabulary, avoids repetition, spreads tools across bullets
+1. **JD Signal Extraction** → An LLM cleans the job description down to ranking signals (skills, responsibilities, domain, constraints).
+2. **Parallel Tailoring** → From those signals, three tasks run at the same time:
+   - **Bullet generation** for each work experience, grounded in project evidence.
+   - **Columbia coursework selection** — picks the most JD-relevant courses.
+   - **Academic project selection** — picks the most JD-relevant projects.
+3. **Validation & Repair** → Generated bullets are checked in code (length, count, unique verbs) and repaired once if any check fails.
+4. **Template Injection** → Bullets, coursework, and academic projects are injected into the LaTeX template (`main.tex`).
+5. **PDF Compilation** → Compiled to a professional PDF via `xelatex`/`tectonic`.
 
 ### Architecture
 
+```mermaid
+flowchart TD
+    JD["Job Description (header+body or JSON)"] --> SUM["JD Signal Extraction (LLM)"]
+    EV["Work Evidence (work_*.json)"] --> GEN["Bullet Generation (per company)"]
+    POOL["Course pool + proj_academic_2-2.json"] --> CRS["Columbia Coursework Selection"]
+    POOL --> ACA["Academic Project Selection"]
+    SUM --> GEN
+    SUM --> CRS
+    SUM --> ACA
+    GEN --> VAL{"Validate: 200 <= len(bullet) <= 240, count, unique verbs"}
+    VAL -->|"issues"| REP["Repair (1 round)"]
+    REP --> VAL
+    VAL -->|"ok"| TEX["Inject into main.tex"]
+    CRS --> TEX
+    ACA --> TEX
+    TEX --> PDF["Compile PDF (xelatex / tectonic)"]
 ```
-┌─────────────────┐
-│  Job Description│ → Extract JD signals (role, skills, keywords)
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ Work Evidence   │ → Load project JSON files (work_*.json)
-│ (JSON files)    │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────────────────────────┐
-│ Per-Company Bullet Generation        │
-│ • Generate bullets per company       │
-│ • Validate constraints               │
-│ • Repair if needed (max 2 attempts) │
-│ • Track used verbs across companies  │
-└────────┬────────────────────────────┘
-         │
-         ▼
-┌─────────────────┐
-│ LaTeX Template  │ → Inject bullets into main.tex
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ PDF Output      │ → Compiled resume PDF
-└─────────────────┘
-```
+
+### Key Features
+
+- **ATS Optimization**: Reframes experience with JD keywords and terminology for maximum ATS relevance.
+- **Two Generation Modes**: `sequential` (one company at a time, tracks used starting verbs across companies) or `single_prompt` (all companies in one call). Both enforce length in code with a repair round.
+- **Code-Enforced Constraints**: Bullet length is checked with Python `len()` against `200 <= len(bullet) <= 240`; also validates bullet count and unique starting verbs.
+- **Evidence-Based**: Stays grounded in the provided project JSON — no fabrication. Human-proofread `example_bullets` are treated as authoritative.
+- **Lexical Diversity**: Varies vocabulary, avoids repetition, and spreads tool mentions across bullets.
 
 ### Generation Pipeline
 
 **Input Format:**
-- Job description: Header+body format (`company_name: X`, `position_name: Y`, `---`, `JD text`) or JSON
-- Work evidence: JSON files with project details, actions, results, tools, constraints
+- **Job description**: header+body (`company_name: X`, `position_name: Y`, `---`, then the JD text), a JSON object, or plain text.
+- **Work evidence**: `data/work_<company>_<min>-<max>.json`, where the filename encodes how many bullets to generate. Each project provides:
+  `problem`, `actions`, `results` (with optional `(framing variants: ...)`), `tools`, `keywords`, `example_bullets` (proofread references), and `harvested_bullets` (additional variants).
+- **Academic projects**: `data/proj_academic_2-2.json` using `Topic`, `Bullet`, `Link` (selected, not regenerated).
 
 **Generation Process:**
-1. **JD Signal Extraction**: Uses LLM to analyze JD and extract role type, key skills, domain keywords
-2. **Prompt Construction**: Builds system/user prompts with:
-   - JD analysis signals
-   - Project evidence
-   - Hard constraints (length, format, uniqueness)
-   - Tailoring instructions (reframe with JD keywords)
-3. **LLM Call**: Vertex AI (Gemini 2.5 Pro) generates numbered bullets
-4. **Validation**: Checks bullet count, character length, verb uniqueness, impact placement
-5. **Repair Loop**: If validation fails, sends repair prompt with issues and regenerates (up to 2 attempts)
-6. **Output**: Canonical numbered list of bullets
+1. **JD Signal Extraction** — LLM distills the JD while preserving all ranking signals.
+2. **Prompt Construction** — Builds system/user prompts with JD signals, project evidence, hard constraints, and tailoring instructions.
+3. **LLM Call** — Via LiteLLM (default `openai/gpt-5.2`; any `vertex_ai/...` or other provider also works).
+4. **Validation** — Code checks bullet count, `len(bullet)` range, and starting-verb uniqueness.
+5. **Repair Loop** — On failure, sends a repair prompt containing the exact issues and regenerates once; the closest result is kept with a warning if it still misses.
+6. **Output** — Bullets per company, plus selected coursework and academic projects.
 
 **Output Format:**
-- Numbered bullets (1. ..., 2. ..., etc.)
-- Each bullet: 200-240 characters
-- Unique starting action verbs per company
-- Measurable impact at end (when available)
+- Each bullet satisfies `200 <= len(bullet) <= 240` characters.
+- Unique starting action verbs per company (and across companies in `sequential` mode).
+- Measurable impact placed at the end when available.
 
 ## Project Structure
 
 ```
 .
-├── main_code/              # Application source code
-│   ├── resume_bullet_workflow.py  # Core generation logic
-│   ├── build_resume.py            # End-to-end pipeline
-│   └── app.py                     # Streamlit UI
-├── data/                   # Input files
-│   ├── JD.txt             # Job description (header+body or JSON)
-│   ├── main.tex           # LaTeX resume template
-│   └── work_*.json        # Work experience evidence files
-├── output/                 # Generated artifacts
-│   ├── prompt_logs/       # LLM prompt/response logs
-│   └── *.tex, *.pdf       # Generated resumes
-└── reference_resume/       # Reference PDFs
+├── main_code/                      # Application source code
+│   ├── resume_bullet_workflow.py   # Core generation, selection, validation/repair
+│   ├── workflow_prompts.py         # System/user prompt builders
+│   ├── build_resume.py             # End-to-end pipeline (bullets → TeX → PDF)
+│   └── app.py                      # Streamlit UI
+├── data/                           # Input files
+│   ├── JD.txt                      # Job description (header+body, JSON, or plain text)
+│   ├── main.tex                    # LaTeX resume template
+│   ├── work_*.json                 # Work experience evidence files
+│   └── proj_academic_2-2.json      # Academic project pool
+├── output/                         # Generated artifacts (.tex, .pdf, prompt_logs/)
+├── reference_resume/               # Reference PDFs
+├── run.sh                          # One-command launcher (loads .env, starts UI)
+├── .env                            # Local secrets/config (gitignored)
+├── Dockerfile                      # Container build (TeX + fonts) for deployment
+└── .streamlit/                     # Streamlit config
 ```
 
 ## Quick Start
 
 ### Setup
 
+Create a `.env` file in the repo root:
+
 ```bash
-uv sync
 # Default provider is OpenAI
-export OPENAI_API_KEY="sk-..."
+OPENAI_API_KEY=sk-...
 
 # Optional: to use Vertex/Gemini models instead, set these and pick a vertex_ai/... model
-# export VERTEXAI_PROJECT="your-project"
-# export VERTEXAI_LOCATION="global"  # defaults to "global" in code
+# VERTEXAI_PROJECT=your-project
+# VERTEXAI_LOCATION=global   # defaults to "global" in code
 ```
 
-### Generate Resume
+Then install dependencies:
+
+```bash
+uv sync
+```
+
+### Run the UI (simplest)
+
+```bash
+./run.sh
+```
+
+`run.sh` loads `.env`, activates the virtualenv, and launches Streamlit at http://localhost:8501. In the sidebar you can pick the model from a dropdown (OpenAI/Vertex presets, or type a custom LiteLLM name) and choose the generation mode. Set `APP_PASSWORD` in `.env` to require a password on the app.
+
+### Run from the CLI
 
 ```bash
 # Generate bullets for one company
@@ -122,17 +128,10 @@ uv run resume-bullets --jd data/JD.txt --all --generation-mode sequential
 uv run build-resume --jd data/JD.txt --generation-mode sequential --log-prompts
 ```
 
-### Streamlit UI
-
-```bash
-uv run streamlit run main_code/app.py
-```
-
 ## Configuration
 
-- **Model**: Defaults to `openai/gpt-5.2` (configurable via `--model`, `LITELLM_MODEL`, or the UI dropdown)
-- **Vertex Location**: Defaults to `global` if `VERTEXAI_LOCATION` is unset (only used for `vertex_ai/...` models)
-- **Bullet Length**: 200-240 characters (hard constraint)
-- **Max Repair Attempts**: 2 per company
-- **Generation Mode**: `sequential` by default (`single_prompt` also available)
-- **Output Directory**: `output/` (configurable via `--output-dir`)
+- **Model**: Defaults to `openai/gpt-5.2` (configurable via `--model`, `LITELLM_MODEL`, or the UI dropdown). Requires the matching provider key (`OPENAI_API_KEY`, or `VERTEXAI_PROJECT` for `vertex_ai/...`).
+- **Generation Mode**: `sequential` by default (`single_prompt` also available); both validate length in code.
+- **Bullet Length**: `200 <= len(bullet) <= 240` characters (hard constraint).
+- **Max Repair Attempts**: 1 repair round per mode.
+- **Output Directory**: `output/` (configurable via `--output-dir`).
