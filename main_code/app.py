@@ -47,6 +47,133 @@ WORK_DIR = Path(os.getenv("RESUME_WORK_DIR", ".")).resolve()
 DATA_DIR = Path(os.getenv("RESUME_DATA_DIR", WORK_DIR / "data")).resolve()
 OUTPUT_DIR = Path(os.getenv("RESUME_OUTPUT_DIR", WORK_DIR / "output")).resolve()
 
+STEPS = ["Job Description", "Generate", "Review & Polish", "Export"]
+
+APP_CSS = """
+<style>
+:root {
+    --rt-primary: #1F4E5F;
+    --rt-accent: #B8752E;
+    --rt-border: #E2D9C7;
+    --rt-text: #211F1C;
+    --rt-muted: #6B655C;
+}
+
+.block-container { padding-top: 2.75rem; padding-bottom: 3rem; max-width: 1180px; }
+
+/* ── Hero ─────────────────────────────────────────────────────────── */
+.rt-eyebrow {
+    font-size: 0.72rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: var(--rt-accent);
+    margin: 0 0 0.4rem 0;
+}
+.rt-tagline {
+    color: var(--rt-muted);
+    font-size: 1.04rem;
+    max-width: 660px;
+    line-height: 1.6;
+    margin: 0.1rem 0 0 0;
+}
+
+/* ── Stepper ──────────────────────────────────────────────────────── */
+.rt-stepper {
+    display: flex; align-items: center; margin: 2rem 0 0.25rem 0;
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    padding-bottom: 0.25rem;
+}
+.rt-step { display: flex; align-items: center; gap: 0.55rem; flex: 0 0 auto; }
+.rt-step .dot {
+    width: 27px; height: 27px; border-radius: 999px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.72rem; font-weight: 600;
+    border: 1.5px solid var(--rt-border);
+    color: var(--rt-muted); background: #FFFFFF;
+    transition: all 150ms ease;
+}
+.rt-step.done .dot { background: var(--rt-primary); border-color: var(--rt-primary); color: #fff; }
+.rt-step.active .dot { border-color: var(--rt-accent); color: var(--rt-accent); box-shadow: 0 0 0 4px rgba(184,117,46,0.15); }
+.rt-step .label { font-size: 0.82rem; font-weight: 500; color: var(--rt-muted); white-space: nowrap; }
+.rt-step.active .label, .rt-step.done .label { color: var(--rt-text); }
+.rt-step-line { flex: 1 1 auto; height: 1.5px; background: var(--rt-border); margin: 0 0.9rem; min-width: 16px; }
+.rt-step-line.done { background: var(--rt-primary); }
+
+/* ── Step headers inside cards ───────────────────────────────────── */
+.rt-step-head { display: flex; align-items: baseline; gap: 0.65rem; margin-bottom: 0.1rem; }
+.rt-step-head .num { font-family: "JetBrains Mono", monospace; color: var(--rt-accent); font-weight: 600; font-size: 0.85rem; }
+.rt-step-head h2 { margin: 0 !important; }
+.rt-step-sub { color: var(--rt-muted); font-size: 0.9rem; margin: 0.1rem 0 1.1rem 0; }
+
+/* ── Cards ────────────────────────────────────────────────────────── */
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    box-shadow: 0 1px 0 rgba(33,31,28,0.03), 0 12px 32px -20px rgba(33,31,28,0.35);
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────── */
+.stButton > button, .stDownloadButton > button, .stFormSubmitButton > button {
+    transition: transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+    font-weight: 600;
+}
+.stButton > button:active, .stDownloadButton > button:active, .stFormSubmitButton > button:active {
+    transform: translateY(1px);
+}
+.stButton > button[kind="primary"], .stFormSubmitButton > button[kind="primary"] {
+    box-shadow: 0 1px 0 rgba(31,78,95,0.08), 0 12px 26px -10px rgba(31,78,95,0.5);
+}
+
+/* ── Sidebar ──────────────────────────────────────────────────────── */
+[data-testid="stSidebar"] .rt-eyebrow { color: var(--rt-primary); }
+.rt-file-chip {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 0.4rem 0.7rem; margin-bottom: 0.4rem;
+    background: #FFFFFF; border: 1px solid var(--rt-border); border-radius: 10px;
+    font-size: 0.83rem;
+}
+.rt-file-chip .count {
+    font-family: "JetBrains Mono", monospace; font-size: 0.72rem;
+    color: var(--rt-muted);
+}
+
+/* ── Misc ─────────────────────────────────────────────────────────── */
+.stTextArea textarea { font-size: 14px; line-height: 1.55; }
+h4 { margin-top: 0.25rem !important; }
+</style>
+"""
+
+
+# ── Layout helpers ──────────────────────────────────────────────────────────
+
+
+def render_stepper(current_index: int) -> None:
+    """Render a horizontal progress stepper across the four workflow stages."""
+    parts = ['<div class="rt-stepper">']
+    for i, label in enumerate(STEPS):
+        state = "done" if i < current_index else ("active" if i == current_index else "")
+        marker = "✓" if state == "done" else str(i + 1)
+        parts.append(
+            f'<div class="rt-step {state}">'
+            f'<span class="dot">{marker}</span>'
+            f'<span class="label">{label}</span>'
+            f"</div>"
+        )
+        if i < len(STEPS) - 1:
+            line_state = "done" if i < current_index else ""
+            parts.append(f'<div class="rt-step-line {line_state}"></div>')
+    parts.append("</div>")
+    st.markdown("".join(parts), unsafe_allow_html=True)
+
+
+def step_head(number: int, title: str, subtitle: str) -> None:
+    st.markdown(
+        f'<div class="rt-step-head"><span class="num">{number:02d}</span>'
+        f"<h2>{title}</h2></div>"
+        f'<p class="rt-step-sub">{subtitle}</p>',
+        unsafe_allow_html=True,
+    )
+
 
 # ── Authentication ────────────────────────────────────────────────────────────
 
@@ -63,29 +190,35 @@ def check_password() -> bool:
     if st.session_state.get("authenticated"):
         return True
 
-    st.markdown(
-        "<div style='text-align:center; margin-top:15vh'>"
-        "<h2>Resume Builder</h2>"
-        "<p style='color:#888'>Enter password to continue</p>"
-        "</div>",
-        unsafe_allow_html=True,
-    )
-
-    col1, col2, col3 = st.columns([1, 1.5, 1])
+    st.markdown("<div style='margin-top:12vh'></div>", unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1, 1.2, 1])
     with col2:
-        with st.form("login_form"):
-            pwd = st.text_input(
-                "Password",
-                type="password",
-                label_visibility="collapsed",
-                placeholder="Password",
+        with st.container(border=True):
+            st.markdown(
+                '<p class="rt-eyebrow" style="text-align:center">Private workspace</p>'
+                "<h2 style='text-align:center; margin:0 0 0.3rem 0'>Resume Tailor</h2>"
+                "<p style='text-align:center; color:var(--rt-muted); margin-bottom:1.4rem'>"
+                "Enter your password to continue</p>",
+                unsafe_allow_html=True,
             )
-            if st.form_submit_button("Sign In", use_container_width=True):
-                if pwd == password:
-                    st.session_state.authenticated = True
-                    st.rerun()
-                else:
-                    st.error("Incorrect password.")
+            with st.form("login_form"):
+                pwd = st.text_input(
+                    "Password",
+                    type="password",
+                    label_visibility="collapsed",
+                    placeholder="Password",
+                )
+                if st.form_submit_button(
+                    "Sign in",
+                    type="primary",
+                    icon=":material/login:",
+                    use_container_width=True,
+                ):
+                    if pwd == password:
+                        st.session_state.authenticated = True
+                        st.rerun()
+                    else:
+                        st.error("Incorrect password.")
     return False
 
 
@@ -97,7 +230,11 @@ def render_sidebar(
 ) -> tuple[str, bool, str]:
     """Render sidebar settings."""
     with st.sidebar:
-        st.header("Settings")
+        st.markdown(
+            '<p class="rt-eyebrow">Workspace</p>'
+            "<h3 style='margin-top:0'>Generation Settings</h3>",
+            unsafe_allow_html=True,
+        )
         custom_label = "Custom (type manually)"
         configured_model = os.getenv("LITELLM_MODEL", DEFAULT_MODEL)
         dropdown_options = MODEL_CHOICES + [custom_label]
@@ -141,13 +278,17 @@ def render_sidebar(
         )
 
         st.divider()
-        st.subheader("Evidence Files")
+        st.markdown('<p class="rt-eyebrow">Evidence files</p>', unsafe_allow_html=True)
         if work_files:
             for f in work_files:
                 try:
                     company, min_b, max_b = parse_filename(f)
                     name = company.replace("_", " ").title()
-                    st.markdown(f"**{name}** — {min_b}-{max_b} bullets")
+                    st.markdown(
+                        f'<div class="rt-file-chip"><span>{name}</span>'
+                        f'<span class="count">{min_b}–{max_b}</span></div>',
+                        unsafe_allow_html=True,
+                    )
                 except ValueError:
                     st.text(f.name)
         else:
@@ -155,8 +296,9 @@ def render_sidebar(
 
         template = DATA_DIR / "main.tex"
         st.divider()
+        st.markdown('<p class="rt-eyebrow">Template</p>', unsafe_allow_html=True)
         if template.exists():
-            st.markdown("**Template:** data/main.tex")
+            st.caption("data/main.tex ✓")
         else:
             st.error("data/main.tex not found.")
 
@@ -280,7 +422,8 @@ def render_bullet_editor(bullets: dict[str, list[str]]) -> dict[str, list[str]]:
 
 def render_combined_bullets(bullets: dict[str, list[str]]) -> None:
     """Render copy-friendly combined bullet blocks per company."""
-    st.markdown("**Copy-ready Combined Bullets (per company)**")
+    st.markdown('<p class="rt-eyebrow">Copy-ready</p>', unsafe_allow_html=True)
+    st.caption("Combined bullets per company, ready to paste elsewhere.")
     for company, bullet_list in bullets.items():
         display = company.replace("_", " ").title()
         combined = "\n".join(
@@ -301,196 +444,210 @@ def render_combined_bullets(bullets: dict[str, list[str]]) -> None:
 
 def main() -> None:
     st.set_page_config(
-        page_title="Resume Builder",
-        page_icon=":page_facing_up:",
+        page_title="Resume Tailor",
+        page_icon="🖋️",
         layout="wide",
     )
 
-    st.markdown(
-        "<style>"
-        ".stTextArea textarea { font-size: 14px; }"
-        ".block-container { padding-top: 2rem; }"
-        "</style>",
-        unsafe_allow_html=True,
-    )
+    st.markdown(APP_CSS, unsafe_allow_html=True)
 
     if not check_password():
         return
 
-    st.title("Resume Customization Tool")
-    st.caption(
-        "Generate ATS-optimized resume bullets tailored to any job description, "
-        "then compile to PDF."
+    st.markdown('<p class="rt-eyebrow">AI-powered · ATS-optimized</p>', unsafe_allow_html=True)
+    st.title("Resume Tailor")
+    st.markdown(
+        '<p class="rt-tagline">Paste a job description and get resume bullets '
+        "grounded in your real experience — reviewed, polished, and compiled "
+        "to a professional PDF in minutes.</p>",
+        unsafe_allow_html=True,
     )
 
     work_files = sorted(DATA_DIR.glob("work_*_*-*.json"))
     model, log_prompts, generation_mode = render_sidebar(work_files)
     template_path = DATA_DIR / "main.tex"
 
+    stage = 0
+    if "bullets" in st.session_state:
+        stage = 2
+    if "pdf_bytes" in st.session_state:
+        stage = 3
+    render_stepper(stage)
+
     # ── Step 1: JD ────────────────────────────────────────────────────────
-    st.header("1 — Job Description")
-    company_name, position_name, jd_text = render_jd_input()
+    with st.container(border=True):
+        step_head(1, "Job Description", "Tell us who you're applying to.")
+        company_name, position_name, jd_text = render_jd_input()
 
     ready = bool(
         jd_text.strip() and company_name.strip() and work_files and template_path.exists()
     )
 
     # ── Step 2: Generate ──────────────────────────────────────────────────
-    st.divider()
-    st.header("2 — Generate Bullets")
+    with st.container(border=True):
+        step_head(2, "Generate Bullets", "AI drafts ATS-optimized bullets from your evidence files.")
 
-    if st.button(
-        "Generate ATS-Optimized Bullets",
-        type="primary",
-        disabled=not ready,
-        use_container_width=True,
-    ):
-        jd_data = {
-            "company_name": company_name.strip(),
-            "position_name": position_name.strip(),
-            "job_description": jd_text.strip(),
-        }
-        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        jd_path = OUTPUT_DIR / "_jd_temp.json"
-        jd_path.write_text(
-            json.dumps(jd_data, ensure_ascii=False), encoding="utf-8"
-        )
+        if st.button(
+            "Generate ATS-optimized bullets",
+            type="primary",
+            icon=":material/auto_awesome:",
+            disabled=not ready,
+            use_container_width=True,
+        ):
+            jd_data = {
+                "company_name": company_name.strip(),
+                "position_name": position_name.strip(),
+                "job_description": jd_text.strip(),
+            }
+            OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+            jd_path = OUTPUT_DIR / "_jd_temp.json"
+            jd_path.write_text(
+                json.dumps(jd_data, ensure_ascii=False), encoding="utf-8"
+            )
 
-        try:
-            with st.spinner("Analyzing JD and generating bullets — this takes ~30 s ..."):
-                (
-                    bullets,
-                    selected_courses,
-                    selected_topics,
-                    selected_academic_projects,
-                ) = run_all_with_full_selection(
-                    jd_path=jd_path,
-                    directory=DATA_DIR,
-                    model=model,
-                    log_prompts=log_prompts,
-                    generation_mode=generation_mode,
-                )
-            st.session_state.bullets = bullets
-            st.session_state.selected_courses = selected_courses
-            st.session_state.selected_academic_topics = selected_topics
-            st.session_state.selected_academic_projects = selected_academic_projects
-            st.session_state.company_name = company_name.strip()
-            st.session_state.position_name = position_name.strip()
-            st.session_state.jd_text = jd_text.strip()
-            st.session_state.editor_nonce = int(st.session_state.get("editor_nonce", 0)) + 1
-            # Clear previous PDF so stale download button disappears
-            st.session_state.pop("pdf_bytes", None)
-            st.session_state.pop("tex_text", None)
-            st.success(f"Generated bullets for {len(bullets)} companies.")
-        except Exception as exc:
-            st.error(f"Generation failed: {exc}")
-        finally:
-            if jd_path.exists():
-                jd_path.unlink()
+            try:
+                with st.spinner("Analyzing JD and generating bullets — this takes ~30 s ..."):
+                    (
+                        bullets,
+                        selected_courses,
+                        selected_topics,
+                        selected_academic_projects,
+                    ) = run_all_with_full_selection(
+                        jd_path=jd_path,
+                        directory=DATA_DIR,
+                        model=model,
+                        log_prompts=log_prompts,
+                        generation_mode=generation_mode,
+                    )
+                st.session_state.bullets = bullets
+                st.session_state.selected_courses = selected_courses
+                st.session_state.selected_academic_topics = selected_topics
+                st.session_state.selected_academic_projects = selected_academic_projects
+                st.session_state.company_name = company_name.strip()
+                st.session_state.position_name = position_name.strip()
+                st.session_state.jd_text = jd_text.strip()
+                st.session_state.editor_nonce = int(st.session_state.get("editor_nonce", 0)) + 1
+                # Clear previous PDF so stale download button disappears
+                st.session_state.pop("pdf_bytes", None)
+                st.session_state.pop("tex_text", None)
+                st.success(f"Generated bullets for {len(bullets)} companies.")
+            except Exception as exc:
+                st.error(f"Generation failed: {exc}")
+            finally:
+                if jd_path.exists():
+                    jd_path.unlink()
 
     # ── Step 3: Edit & Build ──────────────────────────────────────────────
     if "bullets" not in st.session_state:
         return
 
-    st.divider()
-    st.header("3 — Review & Edit")
-    if "selected_courses" in st.session_state:
-        st.markdown("**Top 4 JD-Relevant Columbia Coursework**")
-        for course in st.session_state.selected_courses:
-            st.write(f"- {course}")
-    if "selected_academic_topics" in st.session_state:
-        st.markdown("**Top 3 JD-Relevant Academic Project Topics**")
-        for topic in st.session_state.selected_academic_topics:
-            st.write(f"- {topic}")
+    with st.container(border=True):
+        step_head(3, "Review & Polish", "Fine-tune language, length, and impact before you export.")
+        if "selected_courses" in st.session_state:
+            st.markdown("**Top 4 JD-Relevant Columbia Coursework**")
+            for course in st.session_state.selected_courses:
+                st.write(f"- {course}")
+        if "selected_academic_topics" in st.session_state:
+            st.markdown("**Top 3 JD-Relevant Academic Project Topics**")
+            for topic in st.session_state.selected_academic_topics:
+                st.write(f"- {topic}")
 
-    edited_bullets = render_bullet_editor(st.session_state.bullets)
-    render_combined_bullets(edited_bullets)
+        edited_bullets = render_bullet_editor(st.session_state.bullets)
+        st.divider()
+        render_combined_bullets(edited_bullets)
 
-    st.divider()
-    st.header("4 — Build PDF")
+    with st.container(border=True):
+        step_head(4, "Export", "Compile your tailored resume to a polished PDF.")
 
-    if st.button("Compile Resume PDF", type="primary", use_container_width=True):
-        try:
-            with st.spinner("Injecting bullets and compiling LaTeX ..."):
-                tex_content = template_path.read_text(encoding="utf-8")
-                new_tex = replace_experience_bullets(tex_content, edited_bullets)
-                selected_courses = st.session_state.get("selected_courses")
-                if not selected_courses:
-                    jd_summary = summarize_job_description(
-                        jd_text=jd_text.strip(),
-                        model=model,
+        if st.button(
+            "Compile resume PDF",
+            type="primary",
+            icon=":material/picture_as_pdf:",
+            use_container_width=True,
+        ):
+            try:
+                with st.spinner("Injecting bullets and compiling LaTeX ..."):
+                    tex_content = template_path.read_text(encoding="utf-8")
+                    new_tex = replace_experience_bullets(tex_content, edited_bullets)
+                    selected_courses = st.session_state.get("selected_courses")
+                    if not selected_courses:
+                        jd_summary = summarize_job_description(
+                            jd_text=jd_text.strip(),
+                            model=model,
+                        )
+                        selected_courses = select_top_courses_for_jd(
+                            jd_text=jd_summary,
+                            model=model,
+                        )
+                        st.session_state.selected_courses = selected_courses
+                    new_tex = replace_columbia_coursework(new_tex, selected_courses)
+
+                    selected_academic_projects = st.session_state.get(
+                        "selected_academic_projects"
                     )
-                    selected_courses = select_top_courses_for_jd(
-                        jd_text=jd_summary,
-                        model=model,
-                    )
-                    st.session_state.selected_courses = selected_courses
-                new_tex = replace_columbia_coursework(new_tex, selected_courses)
+                    if not selected_academic_projects:
+                        academic_file = DATA_DIR / DEFAULT_ACADEMIC_PROJECT_FILE
+                        academic_projects = read_projects(academic_file)
+                        jd_summary = summarize_job_description(
+                            jd_text=st.session_state.get("jd_text", jd_text).strip(),
+                            model=model,
+                        )
+                        selected_topics = select_top_academic_topics_for_jd(
+                            jd_text=jd_summary,
+                            project_list=academic_projects,
+                            model=model,
+                        )
+                        selected_academic_projects = select_academic_projects_by_topics(
+                            project_list=academic_projects,
+                            selected_topics=selected_topics,
+                        )
+                        st.session_state.selected_academic_topics = selected_topics
+                        st.session_state.selected_academic_projects = selected_academic_projects
 
-                selected_academic_projects = st.session_state.get(
-                    "selected_academic_projects"
+                    new_tex = replace_academic_projects(new_tex, selected_academic_projects)
+                    new_tex = tighten_spacing(new_tex)
+
+                    cname = st.session_state.company_name
+                    pname = st.session_state.position_name
+                    slug = f"oranich_resume_{slugify(cname)}_{slugify(pname)}"
+
+                    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+                    tex_out = OUTPUT_DIR / f"{slug}.tex"
+                    tex_out.write_text(new_tex, encoding="utf-8")
+
+                    pdf_out = compile_to_pdf(tex_out)
+                    cleanup_aux_files(tex_out)
+
+                # Store bytes in session so download survives re-runs
+                st.session_state.pdf_bytes = pdf_out.read_bytes()
+                st.session_state.pdf_name = pdf_out.name
+                st.session_state.tex_text = tex_out.read_text(encoding="utf-8")
+                st.session_state.tex_name = tex_out.name
+                st.success("Resume compiled successfully!")
+            except Exception as exc:
+                st.error(f"Compilation failed: {exc}")
+
+        # ── Downloads ─────────────────────────────────────────────────────
+        if "pdf_bytes" in st.session_state:
+            col1, col2 = st.columns(2)
+            with col1:
+                st.download_button(
+                    "Download PDF",
+                    data=st.session_state.pdf_bytes,
+                    file_name=st.session_state.pdf_name,
+                    mime="application/pdf",
+                    icon=":material/download:",
+                    use_container_width=True,
                 )
-                if not selected_academic_projects:
-                    academic_file = DATA_DIR / DEFAULT_ACADEMIC_PROJECT_FILE
-                    academic_projects = read_projects(academic_file)
-                    jd_summary = summarize_job_description(
-                        jd_text=st.session_state.get("jd_text", jd_text).strip(),
-                        model=model,
-                    )
-                    selected_topics = select_top_academic_topics_for_jd(
-                        jd_text=jd_summary,
-                        project_list=academic_projects,
-                        model=model,
-                    )
-                    selected_academic_projects = select_academic_projects_by_topics(
-                        project_list=academic_projects,
-                        selected_topics=selected_topics,
-                    )
-                    st.session_state.selected_academic_topics = selected_topics
-                    st.session_state.selected_academic_projects = selected_academic_projects
-
-                new_tex = replace_academic_projects(new_tex, selected_academic_projects)
-                new_tex = tighten_spacing(new_tex)
-
-                cname = st.session_state.company_name
-                pname = st.session_state.position_name
-                slug = f"oranich_resume_{slugify(cname)}_{slugify(pname)}"
-
-                OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-                tex_out = OUTPUT_DIR / f"{slug}.tex"
-                tex_out.write_text(new_tex, encoding="utf-8")
-
-                pdf_out = compile_to_pdf(tex_out)
-                cleanup_aux_files(tex_out)
-
-            # Store bytes in session so download survives re-runs
-            st.session_state.pdf_bytes = pdf_out.read_bytes()
-            st.session_state.pdf_name = pdf_out.name
-            st.session_state.tex_text = tex_out.read_text(encoding="utf-8")
-            st.session_state.tex_name = tex_out.name
-            st.success("Resume compiled successfully!")
-        except Exception as exc:
-            st.error(f"Compilation failed: {exc}")
-
-    # ── Downloads ─────────────────────────────────────────────────────────
-    if "pdf_bytes" in st.session_state:
-        col1, col2 = st.columns(2)
-        with col1:
-            st.download_button(
-                "Download PDF",
-                data=st.session_state.pdf_bytes,
-                file_name=st.session_state.pdf_name,
-                mime="application/pdf",
-                use_container_width=True,
-            )
-        with col2:
-            st.download_button(
-                "Download TeX",
-                data=st.session_state.tex_text,
-                file_name=st.session_state.tex_name,
-                mime="text/plain",
-                use_container_width=True,
-            )
+            with col2:
+                st.download_button(
+                    "Download TeX",
+                    data=st.session_state.tex_text,
+                    file_name=st.session_state.tex_name,
+                    mime="text/plain",
+                    icon=":material/code:",
+                    use_container_width=True,
+                )
 
 
 if __name__ == "__main__":

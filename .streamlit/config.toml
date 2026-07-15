@@ -3,10 +3,42 @@ headless = true
 maxUploadSize = 10
 
 [theme]
-primaryColor = "#4F46E5"
-backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F8F9FA"
-textColor = "#1F2937"
+base = "light"
+primaryColor = "#1F4E5F"
+backgroundColor = "#FAF7F2"
+secondaryBackgroundColor = "#F1EADC"
+textColor = "#211F1C"
+borderColor = "#E2D9C7"
+linkColor = "#B8752E"
+showWidgetBorder = true
+showSidebarBorder = true
+baseRadius = "large"
+buttonRadius = "medium"
+baseFontSize = 16
+
+font = "IBM Plex Sans:https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+headingFont = "Fraunces:https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&display=swap"
+codeFont = "JetBrains Mono:https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
+
+greenColor = "#4B7A5B"
+greenBackgroundColor = "#E9F1EA"
+greenTextColor = "#3A6249"
+
+redColor = "#B3543F"
+redBackgroundColor = "#FAEAE5"
+redTextColor = "#96432F"
+
+orangeColor = "#B8752E"
+orangeBackgroundColor = "#FBF0DE"
+orangeTextColor = "#96601F"
+
+blueColor = "#2D6478"
+blueBackgroundColor = "#E7EFEF"
+blueTextColor = "#1F4E5F"
+
+[theme.sidebar]
+backgroundColor = "#F1EADC"
+secondaryBackgroundColor = "#FAF7F2"
 
 [browser]
 gatherUsageStats = false
