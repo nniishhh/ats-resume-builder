@@ -2,6 +2,10 @@
 
 AI-powered workflow that generates tailored, ATS-optimized resume bullets from a job description, selects the most relevant coursework and academic projects, then compiles a professional PDF resume. Model calls go through [LiteLLM](https://github.com/BerriAI/litellm), so any provider works; the default is `openai/gpt-5.2`.
 
+**🔗 Live app:** https://resume-tailor-885256127561.us-central1.run.app
+
+Hosted on Google Cloud Run; every push to `main` auto-deploys via Cloud Build.
+
 ## How It Works
 
 ### Workflow Overview
