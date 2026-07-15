@@ -1,14 +1,16 @@
 steps:
-  - name: "gcr.io/cloud-builders/docker"
+  # Build with Kaniko so Docker layers (especially the heavy TeX Live +
+  # fonts install) are cached in Artifact Registry and reused across builds.
+  # The first build after enabling this still runs full (it populates the
+  # cache); subsequent builds that only change app code or pip deps reuse
+  # the cached TeX layer and finish in ~1-2 min instead of ~7.
+  - name: "gcr.io/kaniko-project/executor:latest"
     args:
-      - "build"
-      - "-t"
-      - "us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/resume-tailor:$SHORT_SHA"
-      - "."
-  - name: "gcr.io/cloud-builders/docker"
-    args:
-      - "push"
-      - "us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/resume-tailor:$SHORT_SHA"
+      - "--destination=us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/resume-tailor:$SHORT_SHA"
+      - "--cache=true"
+      - "--cache-ttl=336h"
+      - "--cache-repo=us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/resume-tailor-cache"
+
   - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
     entrypoint: gcloud
     args:
@@ -18,9 +20,6 @@ steps:
       - "--image=us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/resume-tailor:$SHORT_SHA"
       - "--region=us-central1"
       - "--project=$PROJECT_ID"
-
-images:
-  - "us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/resume-tailor:$SHORT_SHA"
 
 options:
   logging: CLOUD_LOGGING_ONLY
