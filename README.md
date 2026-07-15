@@ -18,50 +18,23 @@ AI-powered workflow that generates tailored, ATS-optimized resume bullets from a
 ### Architecture
 
 ```mermaid
-flowchart TD
-    subgraph IN[" Inputs "]
-        direction LR
-        JD["Job Description<br/>header+body · JSON · text"]
-        EV["Work Evidence<br/>work_*.json"]
-        POOL["Coursework pool +<br/>proj_academic_2-2.json"]
-    end
-
-    JD --> SUM["JD Signal Extraction"]
-
-    subgraph PAR[" Parallel Tailoring — driven by JD signals "]
-        GEN["Bullet Generation<br/>per company"]
-        CRS["Coursework Selection"]
-        ACA["Academic Project Selection"]
-    end
-
-    SUM --> GEN & CRS & ACA
-    EV --> GEN
-    POOL --> CRS & ACA
-
-    GEN --> VAL{"Validate in code<br/>200 ≤ len(bullet) ≤ 240<br/>count · unique verbs"}
-    VAL -->|"issues"| REP["Repair · 1 round"]
-    REP --> VAL
-
-    subgraph OUT[" Assembly & Output "]
-        TEX["Inject into main.tex"]
-        PDF["Compile PDF<br/>xelatex / tectonic"]
-    end
-
-    VAL -->|"ok"| TEX
+flowchart LR
+    JD["JD"] --> SUM["JD Signals"]
+    SUM --> GEN["Bullets"] & CRS["Coursework"] & ACA["Academic Projects"]
+    GEN --> VAL{"Validate<br/>len · count · verbs"}
+    VAL -->|"fix"| REP["Repair ×1"] --> VAL
+    VAL -->|"ok"| TEX["main.tex"]
     CRS --> TEX
     ACA --> TEX
-    TEX --> PDF
+    TEX --> PDF["PDF"]
 
     classDef llm fill:#dbeafe,stroke:#2563eb,color:#1e3a8a;
     classDef code fill:#dcfce7,stroke:#16a34a,color:#14532d;
-    classDef io fill:#fef3c7,stroke:#d97706,color:#7c2d12;
-
     class SUM,GEN,CRS,ACA,REP llm
     class VAL,TEX,PDF code
-    class JD,EV,POOL io
 ```
 
-> Blue = LLM step · Green = deterministic code · Amber = file I/O. The three tailoring tasks run concurrently, and bullets loop through one validate → repair round before assembly.
+> Blue = LLM · Green = code. `Bullets`, `Coursework`, and `Academic Projects` run in parallel from the JD signals; bullets loop through one validate → repair round before assembly.
 
 ### Key Features
 
