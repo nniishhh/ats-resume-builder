@@ -25,7 +25,7 @@ WORKDIR /app
 
 COPY . .
 
-RUN pip install --no-cache-dir . streamlit
+RUN pip install --no-cache-dir .
 
 EXPOSE 8080
 

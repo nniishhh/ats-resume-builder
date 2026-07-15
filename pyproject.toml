@@ -10,7 +10,8 @@ requires-python = ">=3.10"
 dependencies = [
     "litellm>=1.30.0",
     "google-cloud-aiplatform>=1.40.0",
-    "streamlit>=1.38.0",
+    "streamlit==1.54.0",
+    "streamlit-pdf==1.0.8",
 ]
 
 [project.scripts]

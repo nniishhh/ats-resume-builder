@@ -28,8 +28,11 @@ from main_code.build_resume import (
 )
 from main_code.resume_bullet_workflow import (
     DEFAULT_ACADEMIC_PROJECT_FILE,
+    DEFAULT_COLUMBIA_COURSES,
     DEFAULT_GENERATION_MODE,
     DEFAULT_MODEL,
+    DEFAULT_TOP_ACADEMIC_PROJECT_COUNT,
+    DEFAULT_TOP_COURSE_COUNT,
     GENERATION_MODES,
     MODEL_CHOICES,
     MIN_BULLET_CHARS,
@@ -439,6 +442,79 @@ def render_combined_bullets(bullets: dict[str, list[str]]) -> None:
         )
 
 
+# ── Coursework & Projects Editor ──────────────────────────────────────────────
+
+
+@st.cache_data(show_spinner=False)
+def load_academic_projects(path_str: str) -> list[dict]:
+    """Load the academic project pool once (cached by file path)."""
+    try:
+        return read_projects(Path(path_str))
+    except Exception:
+        return []
+
+
+def render_selection_editors(all_projects: list[dict]) -> None:
+    """Editable pickers for Columbia coursework and academic projects.
+
+    Reads the AI's auto-selection as the starting point, then lets the user
+    add/remove entries. Selections are synced back to session_state so the
+    build step picks them up.
+    """
+    nonce = int(st.session_state.get("editor_nonce", 0))
+
+    # ── Coursework ──────────────────────────────────────────────────────
+    current_courses = list(st.session_state.get("selected_courses", []) or [])
+    course_options = list(dict.fromkeys(list(DEFAULT_COLUMBIA_COURSES) + current_courses))
+    default_courses = [c for c in current_courses if c in course_options]
+    st.markdown('<p class="rt-eyebrow">Columbia coursework</p>', unsafe_allow_html=True)
+    st.caption(
+        f"Listed under Education. AI picked ~{DEFAULT_TOP_COURSE_COUNT} for this role — "
+        "add or drop any you like."
+    )
+    chosen_courses = st.multiselect(
+        "Columbia coursework",
+        options=course_options,
+        default=default_courses,
+        key=f"courses_ms_{nonce}",
+        label_visibility="collapsed",
+        placeholder="Choose coursework to feature",
+    )
+    st.session_state.selected_courses = chosen_courses
+
+    # ── Academic projects ───────────────────────────────────────────────
+    all_topics = [
+        str(p.get("Topic", "")).strip()
+        for p in all_projects
+        if str(p.get("Topic", "")).strip()
+    ]
+    if all_topics:
+        current_topics = list(st.session_state.get("selected_academic_topics", []) or [])
+        topic_options = list(dict.fromkeys(all_topics + current_topics))
+        default_topics = [t for t in current_topics if t in topic_options]
+        st.markdown(
+            '<p class="rt-eyebrow" style="margin-top:1rem">Academic projects</p>',
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            f"Listed under Academic Projects. AI picked ~{DEFAULT_TOP_ACADEMIC_PROJECT_COUNT} "
+            "most relevant — swap in any of your projects."
+        )
+        chosen_topics = st.multiselect(
+            "Academic projects",
+            options=topic_options,
+            default=default_topics,
+            key=f"topics_ms_{nonce}",
+            label_visibility="collapsed",
+            placeholder="Choose projects to feature",
+        )
+        st.session_state.selected_academic_topics = chosen_topics
+        st.session_state.selected_academic_projects = select_academic_projects_by_topics(
+            project_list=all_projects,
+            selected_topics=chosen_topics,
+        )
+
+
 # ── Main App ──────────────────────────────────────────────────────────────────
 
 
@@ -466,6 +542,7 @@ def main() -> None:
     work_files = sorted(DATA_DIR.glob("work_*_*-*.json"))
     model, log_prompts, generation_mode = render_sidebar(work_files)
     template_path = DATA_DIR / "main.tex"
+    academic_projects = load_academic_projects(str(DATA_DIR / DEFAULT_ACADEMIC_PROJECT_FILE))
 
     stage = 0
     if "bullets" in st.session_state:
@@ -543,16 +620,12 @@ def main() -> None:
 
     with st.container(border=True):
         step_head(3, "Review & Polish", "Fine-tune language, length, and impact before you export.")
-        if "selected_courses" in st.session_state:
-            st.markdown("**Top 4 JD-Relevant Columbia Coursework**")
-            for course in st.session_state.selected_courses:
-                st.write(f"- {course}")
-        if "selected_academic_topics" in st.session_state:
-            st.markdown("**Top 3 JD-Relevant Academic Project Topics**")
-            for topic in st.session_state.selected_academic_topics:
-                st.write(f"- {topic}")
 
         edited_bullets = render_bullet_editor(st.session_state.bullets)
+
+        st.divider()
+        render_selection_editors(academic_projects)
+
         st.divider()
         render_combined_bullets(edited_bullets)
 
@@ -569,8 +642,11 @@ def main() -> None:
                 with st.spinner("Injecting bullets and compiling LaTeX ..."):
                     tex_content = template_path.read_text(encoding="utf-8")
                     new_tex = replace_experience_bullets(tex_content, edited_bullets)
+                    # Selections come from the Step 3 pickers (synced to
+                    # session_state). Only fall back to the LLM if they were
+                    # never populated at all — an intentional empty pick is kept.
                     selected_courses = st.session_state.get("selected_courses")
-                    if not selected_courses:
+                    if "selected_courses" not in st.session_state:
                         jd_summary = summarize_job_description(
                             jd_text=jd_text.strip(),
                             model=model,
@@ -580,12 +656,12 @@ def main() -> None:
                             model=model,
                         )
                         st.session_state.selected_courses = selected_courses
-                    new_tex = replace_columbia_coursework(new_tex, selected_courses)
+                    new_tex = replace_columbia_coursework(new_tex, selected_courses or [])
 
                     selected_academic_projects = st.session_state.get(
                         "selected_academic_projects"
                     )
-                    if not selected_academic_projects:
+                    if "selected_academic_projects" not in st.session_state:
                         academic_file = DATA_DIR / DEFAULT_ACADEMIC_PROJECT_FILE
                         academic_projects = read_projects(academic_file)
                         jd_summary = summarize_job_description(
@@ -604,7 +680,9 @@ def main() -> None:
                         st.session_state.selected_academic_topics = selected_topics
                         st.session_state.selected_academic_projects = selected_academic_projects
 
-                    new_tex = replace_academic_projects(new_tex, selected_academic_projects)
+                    new_tex = replace_academic_projects(
+                        new_tex, selected_academic_projects or []
+                    )
                     new_tex = tighten_spacing(new_tex)
 
                     cname = st.session_state.company_name
@@ -627,8 +705,16 @@ def main() -> None:
             except Exception as exc:
                 st.error(f"Compilation failed: {exc}")
 
-        # ── Downloads ─────────────────────────────────────────────────────
+        # ── Preview & Downloads ───────────────────────────────────────────
         if "pdf_bytes" in st.session_state:
+            st.markdown('<p class="rt-eyebrow">Preview</p>', unsafe_allow_html=True)
+            try:
+                st.pdf(st.session_state.pdf_bytes, height=780)
+            except Exception:
+                st.info(
+                    "Inline preview isn't available here — use **Download PDF** below "
+                    "to open the compiled resume."
+                )
             col1, col2 = st.columns(2)
             with col1:
                 st.download_button(
