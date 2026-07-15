@@ -19,21 +19,49 @@ AI-powered workflow that generates tailored, ATS-optimized resume bullets from a
 
 ```mermaid
 flowchart TD
-    JD["Job Description (header+body or JSON)"] --> SUM["JD Signal Extraction (LLM)"]
-    EV["Work Evidence (work_*.json)"] --> GEN["Bullet Generation (per company)"]
-    POOL["Course pool + proj_academic_2-2.json"] --> CRS["Columbia Coursework Selection"]
-    POOL --> ACA["Academic Project Selection"]
-    SUM --> GEN
-    SUM --> CRS
-    SUM --> ACA
-    GEN --> VAL{"Validate: 200 <= len(bullet) <= 240, count, unique verbs"}
-    VAL -->|"issues"| REP["Repair (1 round)"]
+    subgraph IN[" Inputs "]
+        direction LR
+        JD["Job Description<br/>header+body · JSON · text"]
+        EV["Work Evidence<br/>work_*.json"]
+        POOL["Coursework pool +<br/>proj_academic_2-2.json"]
+    end
+
+    JD --> SUM["JD Signal Extraction"]
+
+    subgraph PAR[" Parallel Tailoring — driven by JD signals "]
+        GEN["Bullet Generation<br/>per company"]
+        CRS["Coursework Selection"]
+        ACA["Academic Project Selection"]
+    end
+
+    SUM --> GEN & CRS & ACA
+    EV --> GEN
+    POOL --> CRS & ACA
+
+    GEN --> VAL{"Validate in code<br/>200 ≤ len(bullet) ≤ 240<br/>count · unique verbs"}
+    VAL -->|"issues"| REP["Repair · 1 round"]
     REP --> VAL
-    VAL -->|"ok"| TEX["Inject into main.tex"]
+
+    subgraph OUT[" Assembly & Output "]
+        TEX["Inject into main.tex"]
+        PDF["Compile PDF<br/>xelatex / tectonic"]
+    end
+
+    VAL -->|"ok"| TEX
     CRS --> TEX
     ACA --> TEX
-    TEX --> PDF["Compile PDF (xelatex / tectonic)"]
+    TEX --> PDF
+
+    classDef llm fill:#dbeafe,stroke:#2563eb,color:#1e3a8a;
+    classDef code fill:#dcfce7,stroke:#16a34a,color:#14532d;
+    classDef io fill:#fef3c7,stroke:#d97706,color:#7c2d12;
+
+    class SUM,GEN,CRS,ACA,REP llm
+    class VAL,TEX,PDF code
+    class JD,EV,POOL io
 ```
+
+> Blue = LLM step · Green = deterministic code · Amber = file I/O. The three tailoring tasks run concurrently, and bullets loop through one validate → repair round before assembly.
 
 ### Key Features
 
