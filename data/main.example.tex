@@ -1,0 +1,70 @@
+% Placeholder template. Copy to data/main.tex and fill in with real details.
+%
+% The pipeline rewrites four regions of this file, each located by a regex anchor.
+% Keep the anchors intact or injection silently no-ops:
+%
+%   \section{Experience}      -> replace_experience_bullets()  rewrites \item lines per company
+%   "GPA: ... | Coursework:"  -> replace_columbia_coursework()  rewrites the course list
+%   \section{Academic Projects} -> replace_academic_projects() rewrites the whole section
+%   \section{Skills}          -> replace_skills()  rewrites everything up to \end{document}
+%
+% Company headings must contain the company key from the evidence filename, so
+% data/work_acme_2-3.json matches a heading containing "Acme".
+
+\documentclass[a4paper,10pt]{article}
+\usepackage[left=0.6in, right=0.6in, top=0.6in, bottom=0.6in]{geometry}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage{titlesec}
+\usepackage{fontspec}
+\setmainfont{Times New Roman}
+
+\pagestyle{empty}
+\titleformat{\section}{\large\bfseries\uppercase}{}{0em}{}[\titlerule]
+\titlespacing{\section}{0pt}{12pt}{6pt}
+\setlist[itemize]{leftmargin=*, itemsep=2pt, topsep=2pt, parsep=0pt}
+
+\begin{document}
+
+\begin{center}
+    {\Huge \textbf{YOUR NAME}} \\ \vspace{4pt}
+    (000) 000-0000 $|$ \href{mailto:you@example.edu}{you@example.edu} $|$ \href{https://linkedin.com/in/your-handle}{linkedin.com/in/your-handle}
+\end{center}
+
+\vspace{5pt}
+
+\section{Education}
+\noindent \textbf{Your University} \hfill City, ST \\
+\textit{MS, Your Program} \hfill Expected Mon Year \\
+GPA: 0.00 $|$ Coursework: Course One, Course Two, Course Three, Course Four
+
+\section{Experience}
+\noindent \textbf{Acme Corp (Short Descriptor Carrying Scale)} \hfill City, ST \\
+\textit{Your Title} \hfill Mon Year - Mon Year
+\begin{itemize}
+    \item Placeholder bullet. The pipeline replaces every \item in this block with bullets generated from data/work_acme_<min>-<max>.json, so the text here only needs to exist.
+    \item Placeholder bullet two.
+\end{itemize}
+
+\vspace{6pt}
+
+\noindent \textbf{Globex (Short Descriptor)} \hfill City, ST \\
+\textit{Your Title} \hfill Mon Year - Mon Year
+\begin{itemize}
+    \item Placeholder bullet for the second company, matched from data/work_globex_<min>-<max>.json.
+\end{itemize}
+
+\section{Academic Projects}
+\noindent \textbf{Your University - Project Name (Year)}
+\begin{itemize}
+    \item Placeholder project bullet. Replaced from data/proj_academic_<min>-<max>.json.
+\end{itemize}
+
+% Rewritten by replace_skills() from data/skills_inventory.json.
+% The lines below are the untailored fallback when skills selection is skipped or fails.
+\section{Skills}
+\noindent \textbf{Programming \& Data:} Language One, Language Two, Tool One. \\
+\textbf{Machine Learning:} Method One, Method Two. \\
+\textbf{Visualization \& BI:} Tool One, Tool Two.
+
+\end{document}

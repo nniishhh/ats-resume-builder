@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import sys
+
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -20,7 +21,11 @@ if __package__ in (None, ""):
     repo_root = Path(__file__).resolve().parent.parent
     sys.path.insert(0, str(repo_root))
 
+from main_code import layout, qa_report
 from main_code.resume_bullet_workflow import (
+    extract_jd_signals,
+    select_skills_for_jd,
+    shorten_bullet_llm,
     DEFAULT_GENERATION_MODE,
     DEFAULT_MODEL,
     GENERATION_MODES,
@@ -386,6 +391,167 @@ def tighten_spacing(tex: str) -> str:
     return tex
 
 
+def replace_skills(tex_content: str, categories: List[Dict[str, Any]]) -> str:
+    """Rewrite the Skills section from tailored, whitelist-checked categories.
+
+    Replaces every line between \\section{Skills} and \\end{document}. The template keeps an
+    untailored fallback there so the document still compiles if skills selection is skipped.
+    """
+    if not categories:
+        return tex_content
+
+    rendered: List[str] = []
+    for i, category in enumerate(categories):
+        label = escape_latex(str(category.get("label", "Skills")))
+        skills = ", ".join(escape_latex(str(s)) for s in category.get("skills", []))
+        if not skills:
+            continue
+        prefix = r"\noindent " if i == 0 else ""
+        suffix = r" \\" if i < len(categories) - 1 else ""
+        rendered.append(f"{prefix}\\textbf{{{label}:}} {skills}.{suffix}")
+
+    if not rendered:
+        return tex_content
+
+    pattern = re.compile(
+        r"(\\section\{Skills\}\n)(.*?)(\n\\end\{document\})",
+        re.DOTALL,
+    )
+    if not pattern.search(tex_content):
+        print("[warning] Skills section anchor not found; leaving template skills.",
+              file=sys.stderr)
+        return tex_content
+    return pattern.sub(lambda m: m.group(1) + "\n".join(rendered) + m.group(3), tex_content)
+
+
+def fit_to_one_page(
+    tex_path: Path,
+    pdf_path: Path,
+    max_passes: int = 10,
+) -> Tuple[Path, List[str]]:
+    """Shrink a multi-page resume back to one page, recording what it did.
+
+    The template is tuned for shorter bullets than the generator produces, so overflow is
+    routine. Previously nothing checked, and two-page PDFs shipped silently.
+
+    Ladder, least destructive first — content is only touched after spacing is exhausted:
+      1. tighten inter-entry vertical space
+      2. tighten section spacing
+      3. tighten margins
+      4. drop the last bullet of the longest experience entry (repeats until it fits)
+
+    Spacing is exhausted before any content is touched, and every action is recorded so the
+    QA report can tell the user exactly what was removed.
+    """
+    actions: List[str] = []
+    tex = tex_path.read_text(encoding="utf-8")
+
+    ladder = [
+        ("tightened entry spacing",
+         [(r"\vspace{4pt}", r"\vspace{2pt}"), (r"\vspace{2pt}", r"\vspace{1pt}")]),
+        ("tightened section spacing",
+         [(r"\titlespacing{\section}{0pt}{8pt}{4pt}", r"\titlespacing{\section}{0pt}{5pt}{3pt}"),
+          (r"\titlespacing{\section}{0pt}{5pt}{3pt}", r"\titlespacing{\section}{0pt}{4pt}{2pt}")]),
+        ("tightened margins",
+         [("top=0.5in, bottom=0.5in", "top=0.4in, bottom=0.4in")]),
+    ]
+
+    for _ in range(max_passes):
+        if layout.page_count(pdf_path) == 1:
+            break
+        applied = False
+        for label, replacements in ladder:
+            if label in actions:
+                continue
+            changed = tex
+            for old, new in replacements:
+                changed = changed.replace(old, new)
+            if changed != tex:
+                tex = changed
+                actions.append(label)
+                applied = True
+                break
+        if not applied:
+            dropped = _drop_last_bullet_of_longest_entry(tex)
+            if dropped is None:
+                break
+            tex, note = dropped
+            actions.append(note)
+        tex_path.write_text(tex, encoding="utf-8")
+        pdf_path = compile_to_pdf(tex_path)
+
+    return pdf_path, actions
+
+
+def polish_document(
+    tex_path: Path,
+    pdf_path: Path,
+    model: str | None = None,
+) -> Tuple[Path, List[str]]:
+    """Close the two defects the QA report used to only describe.
+
+    Runs after fit_to_one_page(), because both fixes depend on how the text actually
+    rendered and both change length slightly:
+
+      1. de-duplicate starting verbs across the whole document, including static
+         academic-project bullets the generator never sees
+      2. shorten bullets whose last line is an orphan, using meaning-preserving
+         contractions only
+
+    Both are deterministic. If a fix would push the document back to two pages, it is
+    reverted rather than shipped.
+    """
+    actions: List[str] = []
+    original_tex = tex_path.read_text(encoding="utf-8")
+    tex = original_tex
+
+    deduped, verb_changes = layout.dedupe_starting_verbs_in_tex(tex)
+    if verb_changes:
+        tex = deduped
+        tex_path.write_text(tex, encoding="utf-8")
+        pdf_path = compile_to_pdf(tex_path)
+        actions.append("de-duplicated verbs (" + ", ".join(verb_changes) + ")")
+
+    shortener = None
+    if model:
+        shortener = lambda text, budget: shorten_bullet_llm(  # noqa: E731
+            bullet=text, max_chars=budget, model=model
+        )
+    # Orphan repair is empirical: shorten, recompile, re-measure. One pass can also create
+    # a new orphan elsewhere by reflowing the page, so iterate until it is clean or stalls.
+    for _ in range(3):
+        repaired, orphan_changes = layout.repair_orphans_in_tex(
+            tex, pdf_path, fallback_shortener=shortener
+        )
+        if not orphan_changes:
+            break
+        tex = repaired
+        tex_path.write_text(tex, encoding="utf-8")
+        pdf_path = compile_to_pdf(tex_path)
+        actions.extend(orphan_changes)
+
+    if actions and layout.page_count(pdf_path) > 1:
+        tex_path.write_text(original_tex, encoding="utf-8")
+        pdf_path = compile_to_pdf(tex_path)
+        return pdf_path, ["polish reverted: fixes pushed the resume to two pages"]
+
+    return pdf_path, actions
+
+
+def _drop_last_bullet_of_longest_entry(tex: str) -> Optional[Tuple[str, str]]:
+    """Remove the final \\item from whichever itemize block has the most bullets."""
+    blocks = list(re.finditer(r"\\begin\{itemize\}(.*?)\\end\{itemize\}", tex, re.DOTALL))
+    if not blocks:
+        return None
+    target = max(blocks, key=lambda m: m.group(1).count(r"\item"))
+    items = re.findall(r"^\s*\\item .*$", target.group(1), re.MULTILINE)
+    if len(items) <= 1:
+        return None
+    body = target.group(1).replace(items[-1] + "\n", "").replace(items[-1], "")
+    updated = tex[: target.start(1)] + body + tex[target.end(1) :]
+    return updated, "dropped 1 bullet from the longest entry"
+
+
 def _find_tex_compiler() -> Optional[List[str]]:
     """Return the command list for the first available TeX compiler, or None."""
     candidates = [
@@ -442,6 +608,26 @@ def cleanup_aux_files(tex_path: Path) -> None:
 # ── main pipeline ────────────────────────────────────────────────────────────
 
 
+def _evidence_by_company(data_dir: Path) -> Dict[str, List[dict]]:
+    """Load work_*.json keyed by the same company keys the bullets use.
+
+    Used by the grounding check to verify every number in a generated bullet appears
+    somewhere in that company's evidence.
+    """
+    evidence: Dict[str, List[dict]] = {}
+    for path in sorted(data_dir.glob("work_*.json")):
+        match = re.match(r"^work_(?P<company>.+)_\d+-\d+\.json$", path.name)
+        if not match:
+            continue
+        try:
+            evidence[match.group("company")] = json.loads(
+                path.read_text(encoding="utf-8")
+            )
+        except Exception:
+            continue
+    return evidence
+
+
 def build_resume(
     jd_path: Path,
     template_path: Path,
@@ -456,7 +642,7 @@ def build_resume(
     Returns (tex_path, pdf_path_or_None).
     """
     # 1. Parse JD metadata
-    company_name, position_name, _ = parse_jd_metadata(
+    company_name, position_name, jd_text = parse_jd_metadata(
         jd_path=jd_path,
         model=model,
     )
@@ -492,11 +678,28 @@ def build_resume(
         file=sys.stderr,
     )
 
-    # 3. Read template and replace bullets/coursework/academic projects
+    # 2b. Structured JD signals -> tailored Skills, whitelist-enforced in code
+    jd_signals = extract_jd_signals(jd_text=jd_text, model=model)
+    skill_categories, dropped_skills = select_skills_for_jd(
+        jd_signals=jd_signals, model=model
+    )
+    if dropped_skills:
+        print(
+            f"[warning] Dropped {len(dropped_skills)} skill(s) not in inventory: "
+            f"{dropped_skills}",
+            file=sys.stderr,
+        )
+    print(
+        f"[info] Skills categories: {[c['label'] for c in skill_categories]}",
+        file=sys.stderr,
+    )
+
+    # 3. Read template and replace bullets/coursework/academic projects/skills
     tex_content = template_path.read_text(encoding="utf-8")
     new_tex = replace_experience_bullets(tex_content, bullets)
     new_tex = replace_columbia_coursework(new_tex, selected_courses)
     new_tex = replace_academic_projects(new_tex, selected_academic_projects)
+    new_tex = replace_skills(new_tex, skill_categories)
 
     # 3b. Tighten spacing so longer generated bullets still fit one page
     new_tex = tighten_spacing(new_tex)
@@ -507,15 +710,31 @@ def build_resume(
     tex_out.write_text(new_tex, encoding="utf-8")
     print(f"[info] Wrote {tex_out}", file=sys.stderr)
 
-    # 5. Compile to PDF (optional)
+    # 5. Compile, then fit to one page and report on what shipped
+    report = qa_report.QAReport()
+    report.skills_kept = sum(len(c["skills"]) for c in skill_categories)
+    report.skills_dropped = dropped_skills
+
     if no_compile:
-        return tex_out, None
+        return tex_out, None, report
 
     try:
         pdf_out = compile_to_pdf(tex_out)
+        pdf_out, trim_actions = fit_to_one_page(tex_out, pdf_out)
+        pdf_out, polish_actions = polish_document(tex_out, pdf_out, model=model)
+        trim_actions = trim_actions + polish_actions
         cleanup_aux_files(tex_out)
+
+        report.trim_actions = trim_actions
+        qa_report.check_layout(pdf_out, report)
+        qa_report.check_grounding(bullets, _evidence_by_company(jd_path.parent), report)
+        qa_report.check_jd_coverage(
+            jd_signals.get("must_have", []), layout.extract_layout_text(pdf_out), report
+        )
+
         print(f"[info] Wrote {pdf_out}", file=sys.stderr)
-        return tex_out, pdf_out
+        print("\n" + report.render(), file=sys.stderr)
+        return tex_out, pdf_out, report
     except RuntimeError as exc:
         print(f"[warning] {exc}", file=sys.stderr)
         print(
@@ -523,7 +742,7 @@ def build_resume(
             "Compile it manually or upload to Overleaf.",
             file=sys.stderr,
         )
-        return tex_out, None
+        return tex_out, None, report
 
 
 def main() -> int:
@@ -581,7 +800,7 @@ def main() -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        tex_path, pdf_path = build_resume(
+        tex_path, pdf_path, _report = build_resume(
             jd_path=args.jd,
             template_path=args.template,
             output_dir=output_dir,

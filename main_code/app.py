@@ -17,12 +17,16 @@ if str(REPO_ROOT) not in sys.path:
 
 import streamlit as st
 
+from main_code import layout, qa_report
 from main_code.build_resume import (
+    _evidence_by_company,
     compile_to_pdf,
+    fit_to_one_page,
     cleanup_aux_files,
     replace_academic_projects,
     replace_columbia_coursework,
     replace_experience_bullets,
+    replace_skills,
     slugify,
     tighten_spacing,
 )
@@ -37,11 +41,16 @@ from main_code.resume_bullet_workflow import (
     MODEL_CHOICES,
     MIN_BULLET_CHARS,
     MAX_BULLET_CHARS,
+    extract_jd_signals,
+    extract_numbered_bullets,
+    extract_starting_verbs,
+    generate_bullets,
     parse_filename,
     read_projects,
     run_all_with_full_selection,
     select_academic_projects_by_topics,
     select_top_academic_topics_for_jd,
+    select_skills_for_jd,
     select_top_courses_for_jd,
     summarize_job_description,
 )
@@ -391,6 +400,51 @@ def render_jd_input() -> tuple[str, str, str]:
 # ── Bullet Editor ─────────────────────────────────────────────────────────────
 
 
+def regenerate_company_bullets(company: str, instruction: str) -> list[str] | None:
+    """Re-run bullet generation for a single company, leaving every other section alone.
+
+    Most edits in practice are one-section changes ("lead with the Airflow work", "drop
+    'predictive'"), and rerunning the whole pipeline for those re-rolls bullets the user has
+    already approved. Returns None if the evidence file or JD is missing.
+    """
+    jd_text = st.session_state.get("jd_text") or st.session_state.get("jd_summary")
+    if not jd_text:
+        return None
+
+    data_dir = DATA_DIR
+    matches = list(data_dir.glob(f"work_{company}_*.json"))
+    if not matches:
+        return None
+
+    model = st.session_state.get("model", DEFAULT_MODEL)
+    guided_jd = jd_text
+    if instruction.strip():
+        guided_jd = (
+            f"{jd_text}\n\n"
+            "ADDITIONAL INSTRUCTION FROM THE CANDIDATE (highest priority, but it never\n"
+            "overrides truthfulness or the evidence): "
+            f"{instruction.strip()}"
+        )
+
+    # Keep verbs distinct from the sections we are not regenerating.
+    other_verbs: list[str] = []
+    for other, bullet_list in (st.session_state.get("bullets") or {}).items():
+        if other == company:
+            continue
+        other_verbs.extend(extract_starting_verbs(bullet_list))
+
+    projects = read_projects(matches[0])
+    output = generate_bullets(
+        jd_text=guided_jd,
+        project_file=matches[0],
+        projects=projects,
+        model=model,
+        log_prompts=False,
+        used_verbs=other_verbs,
+    )
+    return extract_numbered_bullets(output)
+
+
 def render_bullet_editor(bullets: dict[str, list[str]]) -> dict[str, list[str]]:
     """Render editable bullet text areas with live character counts."""
     edited: dict[str, list[str]] = {}
@@ -399,6 +453,29 @@ def render_bullet_editor(bullets: dict[str, list[str]]) -> dict[str, list[str]]:
     for company, bullet_list in bullets.items():
         display = company.replace("_", " ").title()
         st.markdown(f"#### {display}")
+
+        with st.expander(f"Regenerate {display} only", expanded=False):
+            instruction = st.text_input(
+                "Optional instruction",
+                key=f"regen_instr_{editor_nonce}_{company}",
+                placeholder="e.g. lead with the Airflow work; drop 'predictive'",
+            )
+            if st.button(f"Regenerate {display}", key=f"regen_btn_{editor_nonce}_{company}"):
+                with st.spinner(f"Regenerating {display}…"):
+                    try:
+                        fresh = regenerate_company_bullets(company, instruction)
+                    except Exception as exc:  # surface, do not crash the page
+                        fresh = None
+                        st.error(f"Regeneration failed: {exc}")
+                if fresh:
+                    updated = dict(st.session_state.get("bullets") or {})
+                    updated[company] = fresh
+                    st.session_state.bullets = updated
+                    # Bump the nonce so the text areas pick up the new values.
+                    st.session_state.editor_nonce = editor_nonce + 1
+                    st.rerun()
+                elif fresh is not None:
+                    st.warning("No bullets returned; keeping the current ones.")
 
         company_bullets: list[str] = []
         for i, bullet in enumerate(bullet_list):
@@ -541,6 +618,7 @@ def main() -> None:
 
     work_files = sorted(DATA_DIR.glob("work_*_*-*.json"))
     model, log_prompts, generation_mode = render_sidebar(work_files)
+    st.session_state.model = model  # so per-section regeneration uses the same model
     template_path = DATA_DIR / "main.tex"
     academic_projects = load_academic_projects(str(DATA_DIR / DEFAULT_ACADEMIC_PROJECT_FILE))
 
@@ -603,6 +681,14 @@ def main() -> None:
                 st.session_state.company_name = company_name.strip()
                 st.session_state.position_name = position_name.strip()
                 st.session_state.jd_text = jd_text.strip()
+                # Structured signals drive Skills selection and JD-coverage reporting.
+                try:
+                    st.session_state.jd_signals = extract_jd_signals(
+                        jd_text=jd_text.strip(), model=model
+                    )
+                except Exception:
+                    st.session_state.jd_signals = {}
+                st.session_state.pop("qa_report_text", None)
                 st.session_state.editor_nonce = int(st.session_state.get("editor_nonce", 0)) + 1
                 # Clear previous PDF so stale download button disappears
                 st.session_state.pop("pdf_bytes", None)
@@ -683,6 +769,15 @@ def main() -> None:
                     new_tex = replace_academic_projects(
                         new_tex, selected_academic_projects or []
                     )
+                    # Tailor Skills from the whitelist, same as the CLI path.
+                    jd_signals = st.session_state.get("jd_signals") or {}
+                    if jd_signals:
+                        skill_categories, dropped_skills = select_skills_for_jd(
+                            jd_signals=jd_signals, model=model
+                        )
+                        new_tex = replace_skills(new_tex, skill_categories)
+                        st.session_state.skills_dropped = dropped_skills
+
                     new_tex = tighten_spacing(new_tex)
 
                     cname = st.session_state.company_name
@@ -694,7 +789,26 @@ def main() -> None:
                     tex_out.write_text(new_tex, encoding="utf-8")
 
                     pdf_out = compile_to_pdf(tex_out)
+                    pdf_out, trim_actions = fit_to_one_page(tex_out, pdf_out)
                     cleanup_aux_files(tex_out)
+
+                    # Build the QA report from what actually rendered.
+                    report = qa_report.QAReport()
+                    report.trim_actions = trim_actions
+                    report.skills_dropped = st.session_state.get("skills_dropped", [])
+                    qa_report.check_layout(pdf_out, report)
+                    qa_report.check_grounding(
+                        edited_bullets, _evidence_by_company(DATA_DIR), report
+                    )
+                    must_have = (st.session_state.get("jd_signals") or {}).get(
+                        "must_have", []
+                    )
+                    if must_have:
+                        qa_report.check_jd_coverage(
+                            must_have, layout.extract_layout_text(pdf_out), report
+                        )
+                    st.session_state.qa_report_text = report.render()
+                    st.session_state.qa_report_clean = report.clean
 
                 # Store bytes in session so download survives re-runs
                 st.session_state.pdf_bytes = pdf_out.read_bytes()
@@ -704,6 +818,18 @@ def main() -> None:
                 st.success("Resume compiled successfully!")
             except Exception as exc:
                 st.error(f"Compilation failed: {exc}")
+
+        # ── Build report ──────────────────────────────────────────────────
+        if "qa_report_text" in st.session_state:
+            clean = st.session_state.get("qa_report_clean", False)
+            label = "Build report" + ("" if clean else "  —  issues found")
+            with st.expander(label, expanded=not clean):
+                st.code(st.session_state.qa_report_text, language="text")
+                st.caption(
+                    "Checks are deterministic: page count, wrapped-line orphans, repeated "
+                    "starting verbs, figures absent from your evidence files, skills outside "
+                    "the inventory, and JD keyword coverage."
+                )
 
         # ── Preview & Downloads ───────────────────────────────────────────
         if "pdf_bytes" in st.session_state:

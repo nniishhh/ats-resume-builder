@@ -99,10 +99,12 @@ Let the job description determine what to emphasize and how to structure bullets
 Choose the most appropriate framing without adding unsupported details.
 
 ========================================
-PROFESSIONAL ABSTRACTION
+NO INFLATION
 ========================================
-You may elevate specific implementations into accurate higher-level professional terminology when supported by evidence (e.g., "pipeline," "system," "AI","ML").
-Do NOT exaggerate beyond what the evidence supports.
+Describe the work at the level the evidence describes it.
+- Do NOT add a category of work that is not in the evidence (e.g. calling optimization work "predictive").
+- Do NOT promote a technique into a broader family to match the JD (e.g. clustering -> "machine learning" if the evidence says clustering).
+- Generic system nouns ("pipeline", "system", "framework") are fine when the evidence describes a built artifact.
 
 ========================================
 EVIDENCE FIELD GUIDE
@@ -257,10 +259,12 @@ Let the job description determine what to emphasize and how to structure bullets
 Choose the most appropriate framing without adding unsupported details.
 
 ========================================
-PROFESSIONAL ABSTRACTION
+NO INFLATION
 ========================================
-You may elevate specific implementations into accurate higher-level professional terminology when supported by evidence (e.g., "pipeline," "system," "AI","ML").
-Do NOT exaggerate beyond what the evidence supports.
+Describe the work at the level the evidence describes it.
+- Do NOT add a category of work that is not in the evidence (e.g. calling optimization work "predictive").
+- Do NOT promote a technique into a broader family to match the JD (e.g. clustering -> "machine learning" if the evidence says clustering).
+- Generic system nouns ("pipeline", "system", "framework") are fine when the evidence describes a built artifact.
 
 ========================================
 EVIDENCE FIELD GUIDE
@@ -369,4 +373,137 @@ def build_academic_project_selection_prompts(
         f"{json.dumps(project_list, ensure_ascii=True)}\n\n"
         f"Return only the {top_k} most relevant Topic names."
     )
+    return system_prompt, user_prompt
+
+
+def build_jd_signals_prompts(jd_text: str) -> Tuple[str, str]:
+    """Structured ranking signals from a JD.
+
+    Complements build_jd_summary_prompts (which returns cleaned prose for bullet generation).
+    Downstream consumers need structure, not prose: the skills selector needs must-haves, the
+    QA report needs keywords to check coverage against, and the trim ladder needs a relevance
+    ranking so it drops the least relevant content rather than an arbitrary one.
+    """
+    system_prompt = (
+        "You are a Job Description Analyst. Extract structured ranking signals for resume tailoring.\n\n"
+        "Return ONLY valid JSON matching this schema, with no markdown or commentary:\n"
+        "{\n"
+        '  "archetype": one of "builder" | "analyst" | "researcher" | "ops" | "generalist",\n'
+        '  "seniority": one of "intern" | "junior" | "mid" | "senior",\n'
+        '  "domain": short phrase, e.g. "transit operations" or "adtech",\n'
+        '  "must_have": [concrete skills/tools/methods stated as required],\n'
+        '  "nice_to_have": [stated as preferred or bonus],\n'
+        '  "top_3_screens": [the three things this JD is really filtering on, in plain language]\n'
+        "}\n\n"
+        "RULES\n"
+        "- must_have and nice_to_have hold SHORT KEYWORD PHRASES, not sentences.\n"
+        "  Good: \"Python\", \"SQL\", \"predictive modeling\", \"model deployment\", \"Salesforce\".\n"
+        "  Bad:  \"At least 2 years of Data Scientist experience.\", \"Strong Python and SQL skills.\"\n"
+        "  Split compound requirements into separate entries: \"Strong Python and SQL skills\"\n"
+        "  becomes [\"Python\", \"SQL\"].\n"
+        "- Each entry must be a term that could plausibly appear verbatim in a resume, because\n"
+        "  these are matched literally against the finished document to measure coverage.\n"
+        "- Use the JD's own wording for tools and technologies; drop filler words like\n"
+        "  \"strong\", \"expertise in\", \"experience with\", \"at least N years of\".\n"
+        "- must_have holds only what the JD marks as required; everything softer goes in nice_to_have.\n"
+        "- Do not invent requirements that are not in the text.\n"
+        "- Keep each list under 12 entries; prefer the most discriminating ones."
+    )
+    user_prompt = f"Extract ranking signals from this job description:\n\n{jd_text}"
+    return system_prompt, user_prompt
+
+
+def build_skills_selection_prompts(
+    jd_signals: Dict[str, Any],
+    inventory: Dict[str, Any],
+    max_per_category: int = 10,
+) -> Tuple[str, str]:
+    """Choose and order the Skills section from a fixed whitelist.
+
+    The inventory is exhaustive by construction. The model selects and orders; it never
+    authors. Anything it returns that is not in the inventory is dropped in code, so a
+    hallucinated skill cannot reach the PDF even if the model ignores these instructions.
+    """
+    system_prompt = (
+        "You are tailoring the Skills section of a resume to a job description.\n\n"
+        "CRITICAL CONSTRAINT\n"
+        "- You may ONLY return skill names that appear VERBATIM in the provided inventory.\n"
+        "- The inventory is exhaustive. If a skill the JD asks for is not in it, the candidate\n"
+        "  does not have it. Omit it. Do NOT substitute a similar-sounding skill.\n"
+        "- Never invent, rename, reword, or abbreviate a skill name.\n\n"
+        "SELECTION\n"
+        f"- Return at most {max_per_category} skills per category.\n"
+        "- Drop categories that are not relevant to this job; do not pad them.\n"
+        "- Order categories most-relevant first, and skills within a category most-relevant first.\n"
+        "- Prefer must_have matches over nice_to_have.\n\n"
+        "Return ONLY valid JSON:\n"
+        '{"categories": [{"id": "<category id from inventory>", "label": "<label to print>",\n'
+        '                 "skills": ["<verbatim inventory names>"]}]}'
+    )
+    user_prompt = json.dumps(
+        {
+            "job_signals": jd_signals,
+            "inventory": inventory,
+            "reminder": "Every returned skill must match an inventory name character for character.",
+        },
+        ensure_ascii=True,
+    )
+    return system_prompt, user_prompt
+
+
+def build_company_descriptor_prompts(
+    jd_signals: Dict[str, Any],
+    descriptor_options: Dict[str, List[str]],
+) -> Tuple[str, str]:
+    """Pick a company descriptor per employer from pre-written options.
+
+    Descriptors carry scale ("Southeast Asia's Largest E-Commerce Platform; Sea Group") rather
+    than category ("E-commerce Platform"), and which framing lands depends on the reader. These
+    are written by hand and only selected here, so the model can never invent a headcount,
+    funding stage, or revenue figure.
+    """
+    system_prompt = (
+        "Select the best company descriptor for each employer, given the job description signals.\n\n"
+        "- Choose ONLY from the provided options for each company. Return them verbatim.\n"
+        "- Never write your own descriptor and never invent financials, headcount, or funding.\n"
+        "- Prefer the framing that matters most to this reader: scale for corporate roles,\n"
+        "  domain for specialist roles, startup breadth for small-team roles.\n\n"
+        'Return ONLY valid JSON: {"<company>": "<chosen option verbatim>"}'
+    )
+    user_prompt = json.dumps(
+        {"job_signals": jd_signals, "options": descriptor_options}, ensure_ascii=True
+    )
+    return system_prompt, user_prompt
+
+
+def build_bullet_shorten_prompts(
+    bullet: str,
+    max_chars: int,
+    projects: List[Dict[str, Any]] | None = None,
+) -> Tuple[str, str]:
+    """Compress one bullet that renders with an orphan line.
+
+    Used only as a fallback after deterministic contractions fail, which happens when a
+    bullet is already tight and simply runs a few characters past a line boundary. The
+    rewrite must be lossless in substance: this runs after validation, so a dropped metric
+    or invented claim here would bypass every earlier check.
+    """
+    system_prompt = (
+        "Shorten a single resume bullet so it fits on fewer rendered lines.\n\n"
+        "ABSOLUTE RULES\n"
+        f"- The result MUST be at most {max_chars} characters.\n"
+        "- Keep EVERY number, percentage, tool name, and proper noun exactly as written.\n"
+        "- Do NOT add any fact, tool, metric, or claim that is not already in the bullet.\n"
+        "- Do NOT change what was done, only how tersely it is described.\n"
+        "- Keep the same opening verb.\n\n"
+        "HOW TO SHORTEN\n"
+        "- Cut filler and hedging first.\n"
+        "- Collapse redundant clauses; prefer a noun phrase over a relative clause.\n"
+        "- Drop the least informative trailing detail last, and only if still over budget.\n\n"
+        "Return ONLY the rewritten bullet. No quotes, numbering, or commentary."
+    )
+    payload: Dict[str, Any] = {"bullet": bullet, "max_chars": max_chars}
+    if projects:
+        payload["evidence_for_reference_only"] = projects
+    user_prompt = json.dumps(payload, ensure_ascii=True)
     return system_prompt, user_prompt

@@ -27,6 +27,10 @@ from main_code.workflow_prompts import (
     build_bullet_generation_system_prompt,
     build_bullet_generation_user_prompt,
     build_bullet_repair_payload,
+    build_bullet_shorten_prompts,
+    build_company_descriptor_prompts,
+    build_jd_signals_prompts,
+    build_skills_selection_prompts,
     build_course_selection_prompts,
     build_jd_summary_prompts,
 )
@@ -92,6 +96,20 @@ LLM_TASK_BULLET_REPAIR = "bullet_repair"
 LLM_TASK_BULLETS_ALL = "bullets_all"
 LLM_TASK_COURSE_SELECTION = "course_selection"
 LLM_TASK_ACADEMIC_SELECTION = "academic_selection"
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+
+
+def _strip_fence(raw: str) -> str:
+    """Remove a ```json ... ``` wrapper if the model added one."""
+    cleaned = raw.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```\w*\n?", "", cleaned)
+        cleaned = re.sub(r"\n?```$", "", cleaned)
+    return cleaned.strip()
+
+
+LLM_TASK_SKILLS_SELECTION = "skills_selection"
+LLM_TASK_COMPANY_DESCRIPTOR = "company_descriptor"
 DEFAULT_TASK_LLM_SETTINGS: Dict[str, Dict[str, Any]] = {
     LLM_TASK_JD_SIGNALS: {
         "model": DEFAULT_NON_BULLET_MODEL,
@@ -601,11 +619,38 @@ def extract_starting_verbs(bullets: Sequence[str]) -> List[str]:
     return verbs
 
 
+_NUMERIC_CLAIM = re.compile(r"\d[\d,.]*\s*(?:%|K|M|B|x)?", re.IGNORECASE)
+
+
+def _numeric_claims(text: str) -> set[str]:
+    """Normalised numeric tokens, so '6M' and '6 M' and '6M,' compare equal."""
+    out: set[str] = set()
+    for raw in _NUMERIC_CLAIM.findall(text):
+        token = raw.replace(",", "").replace(" ", "").rstrip(".").upper()
+        if token:
+            out.add(token)
+    return out
+
+
+def _evidence_numeric_claims(projects: Sequence[Dict[str, Any]]) -> set[str]:
+    parts: List[str] = []
+    for project in projects:
+        for key in ("problem", "actions", "results", "tools", "keywords",
+                    "example_bullets", "harvested_bullets"):
+            value = project.get(key)
+            if isinstance(value, str):
+                parts.append(value)
+            elif isinstance(value, (list, tuple)):
+                parts.extend(str(v) for v in value)
+    return _numeric_claims(" ".join(parts))
+
+
 def validate_bullets(
     bullets: List[str],
     min_bullets: int,
     max_bullets: int,
     forbidden_verbs: Sequence[str] | None = None,
+    projects: Sequence[Dict[str, Any]] | None = None,
 ) -> List[str]:
     issues: List[str] = []
     if len(bullets) < min_bullets or len(bullets) > max_bullets:
@@ -644,6 +689,20 @@ def validate_bullets(
             f"Each bullet must be at most {MAX_BULLET_CHARS} characters "
             f"(too long: {long_bullets})."
         )
+
+    # Grounding: every number in a bullet must exist somewhere in the evidence for that
+    # company. Numbers are the highest-consequence thing to get wrong and are unambiguous
+    # to check, unlike free-text tool names.
+    if projects:
+        allowed = _evidence_numeric_claims(projects)
+        for idx, bullet in enumerate(bullets, start=1):
+            invented = sorted(_numeric_claims(bullet) - allowed)
+            if invented:
+                issues.append(
+                    f"Bullet {idx} contains figures absent from the evidence: "
+                    + ", ".join(invented)
+                    + ". Use only metrics present in the provided evidence."
+                )
 
     return issues
 
@@ -832,6 +891,7 @@ def generate_bullets(
         min_bullets,
         max_bullets,
         forbidden_verbs=used_verbs,
+        projects=projects,
     )
     if not issues:
         return canonize_numbered_list(candidate_bullets)
@@ -877,6 +937,7 @@ def generate_bullets(
             min_bullets,
             max_bullets,
             forbidden_verbs=used_verbs,
+            projects=projects,
         )
         if not issues:
             return canonize_numbered_list(candidate_bullets)
@@ -967,6 +1028,10 @@ def generate_all_bullets(
     bounds_by_company = {
         c["company"]: (c["min_bullets"], c["max_bullets"]) for c in company_data
     }
+    projects_by_company = {
+        c["company"]: c.get("projects") or c.get("project_evidence") or []
+        for c in company_data
+    }
 
     def _validate_all(res: Dict[str, Any]) -> Dict[str, List[str]]:
         issues_by_company: Dict[str, List[str]] = {}
@@ -988,7 +1053,10 @@ def generate_all_bullets(
                 ]
                 continue
             issues = validate_bullets(
-                [str(bullet) for bullet in bullets], min_b, max_b
+                [str(bullet) for bullet in bullets],
+                min_b,
+                max_b,
+                projects=projects_by_company.get(company),
             )
             if issues:
                 issues_by_company[company] = issues
@@ -1378,3 +1446,189 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+# ---------------------------------------------------------------------------
+# JD signals + Skills selection
+# ---------------------------------------------------------------------------
+
+def extract_jd_signals(jd_text: str, model: str) -> Dict[str, Any]:
+    """Structured ranking signals from a JD.
+
+    Separate from summarize_job_description(), which returns cleaned prose for bullet
+    generation. Selection tasks and the QA report need structure. Returns an empty-but-valid
+    shape on failure so callers never have to guard.
+    """
+    empty: Dict[str, Any] = {
+        "archetype": "generalist",
+        "seniority": "",
+        "domain": "",
+        "must_have": [],
+        "nice_to_have": [],
+        "top_3_screens": [],
+    }
+    task_model, task_temperature = get_task_llm_settings(
+        LLM_TASK_JD_SIGNALS, fallback_model=model
+    )
+    system_prompt, user_prompt = build_jd_signals_prompts(jd_text)
+    try:
+        raw = call_llm(
+            model=task_model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=task_temperature,
+            max_tokens=1200,
+        )
+        data = json.loads(_strip_fence(raw))
+    except Exception:
+        return empty
+    if not isinstance(data, dict):
+        return empty
+    return {**empty, **{k: v for k, v in data.items() if k in empty}}
+
+
+def load_skills_inventory(path: Path | None = None) -> Dict[str, Any]:
+    """Master whitelist for the Skills section."""
+    inventory_path = path or (DATA_DIR / "skills_inventory.json")
+    with inventory_path.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def _inventory_index(inventory: Dict[str, Any]) -> Dict[str, str]:
+    """Map lowercased skill name -> canonical name, for verbatim matching."""
+    index: Dict[str, str] = {}
+    for category in inventory.get("categories", []):
+        for skill in category.get("skills", []):
+            name = skill.get("name", "")
+            if name:
+                index[name.strip().lower()] = name
+    return index
+
+
+def select_skills_for_jd(
+    jd_signals: Dict[str, Any],
+    model: str,
+    inventory: Dict[str, Any] | None = None,
+    max_per_category: int = 10,
+) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """Tailor the Skills section, enforcing the inventory whitelist in code.
+
+    Returns (categories, dropped) where `dropped` lists anything the model returned that is
+    not in the inventory. Dropping happens here rather than being left to prompt compliance,
+    so an unsupported claim cannot reach the PDF even if the model ignores its instructions.
+    """
+    inv = inventory if inventory is not None else load_skills_inventory()
+    index = _inventory_index(inv)
+    dropped: List[str] = []
+
+    task_model, task_temperature = get_task_llm_settings(
+        LLM_TASK_SKILLS_SELECTION, fallback_model=model
+    )
+    system_prompt, user_prompt = build_skills_selection_prompts(
+        jd_signals=jd_signals, inventory=inv, max_per_category=max_per_category
+    )
+    try:
+        raw = call_llm(
+            model=task_model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=task_temperature,
+            max_tokens=1500,
+        )
+        payload = json.loads(_strip_fence(raw))
+        proposed = payload.get("categories", []) if isinstance(payload, dict) else []
+    except Exception:
+        proposed = []
+
+    if not proposed:
+        return _fallback_skills(inv, max_per_category), dropped
+
+    categories: List[Dict[str, Any]] = []
+    for category in proposed:
+        if not isinstance(category, dict):
+            continue
+        kept: List[str] = []
+        for name in category.get("skills", []) or []:
+            canonical = index.get(str(name).strip().lower())
+            if canonical is None:
+                dropped.append(str(name))
+            elif canonical not in kept:
+                kept.append(canonical)
+        if kept:
+            categories.append(
+                {
+                    "id": category.get("id", ""),
+                    "label": category.get("label") or category.get("id", "Skills"),
+                    "skills": kept[:max_per_category],
+                }
+            )
+
+    if not categories:
+        return _fallback_skills(inv, max_per_category), dropped
+    return categories, dropped
+
+
+def _fallback_skills(inventory: Dict[str, Any], max_per_category: int) -> List[Dict[str, Any]]:
+    """Inventory order, truncated. Used when the model call fails or returns nothing usable."""
+    return [
+        {
+            "id": c.get("id", ""),
+            "label": c.get("label", "Skills"),
+            "skills": [s["name"] for s in c.get("skills", [])][:max_per_category],
+        }
+        for c in inventory.get("categories", [])
+    ]
+
+
+LLM_TASK_BULLET_SHORTEN = "bullet_shorten"
+
+
+def shorten_bullet_llm(
+    bullet: str,
+    max_chars: int,
+    model: str,
+    projects: Sequence[Dict[str, Any]] | None = None,
+) -> str:
+    """Compress one bullet under a hard character budget, preserving every claim.
+
+    Fallback for orphan repair when deterministic contractions cannot free enough
+    characters. Verified before use: the rewrite is rejected if it exceeds the budget or
+    introduces a number that was not in the original, so a bad rewrite degrades to a no-op
+    rather than shipping an unsupported claim.
+    """
+    task_model, task_temperature = get_task_llm_settings(
+        LLM_TASK_BULLET_SHORTEN, fallback_model=model
+    )
+    system_prompt, user_prompt = build_bullet_shorten_prompts(
+        bullet=bullet, max_chars=max_chars, projects=list(projects) if projects else None
+    )
+    try:
+        raw = call_llm(
+            model=task_model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=task_temperature,
+            max_tokens=400,
+        )
+    except Exception:
+        return bullet
+
+    candidate = _strip_fence(raw).strip().strip('"').lstrip("-•").strip()
+    candidate = re.sub(r"^\d+[.)]\s*", "", candidate)
+
+    # max_chars is a target, not a gate. A rewrite that lands slightly over budget still
+    # often clears the orphan, and the caller recompiles and re-measures to find out. An
+    # earlier version hard-rejected anything over budget and silently discarded good
+    # rewrites (269 -> 253 chars was thrown away for missing a 233 target).
+    if not candidate or len(candidate) >= len(bullet):
+        return bullet
+    # Never let a "shortening" introduce a figure the original did not contain.
+    if _numeric_claims(candidate) - _numeric_claims(bullet):
+        return bullet
+    return candidate

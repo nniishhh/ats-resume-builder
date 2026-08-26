@@ -11,3 +11,12 @@ reference_resume/
 # Local env/config
 .env
 .env.*
+
+# Personal resume data — kept local. The pipeline reads these at runtime; see data/README.md
+# for the expected shapes and data/main.example.tex for a placeholder template.
+data/work_*.json
+data/JD*.txt
+data/proj_academic*.json
+data/skills_inventory.json
+data/main.tex
+CLAUDE.md
