@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Resume Tailor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,wght@0,400;1,400&family=Jost:wght@300;400;500&display=swap"
+  rel="stylesheet"
+/>
+<link rel="stylesheet" href="/assets/style.css?v=3" />
+</head>
+<body>
+
+<div class="shell">
+  <aside class="sidebar" id="sidebar">
+    <p class="eyebrow">Workspace</p>
+    <h3 class="sidebarTitle">Generation Settings</h3>
+
+    <label class="fieldLabel" for="modelSelect">Model</label>
+    <select id="modelSelect" class="select"></select>
+
+    <label class="checkboxRow">
+      <input type="checkbox" id="logPrompts" />
+      <span>Log prompts to disk</span>
+    </label>
+
+    <label class="fieldLabel" for="modeSelect">Generation Mode</label>
+    <select id="modeSelect" class="select">
+      <option value="sequential">Sequential (one company at a time)</option>
+      <option value="single_prompt">One Prompt (all companies JSON)</option>
+    </select>
+
+    <div class="hr"></div>
+    <p class="eyebrow">Evidence files</p>
+    <div id="evidenceList" class="evidenceList"></div>
+
+    <div class="hr"></div>
+    <p class="eyebrow">Template</p>
+    <div id="templateStatus" class="templateStatus"></div>
+  </aside>
+
+  <main class="main">
+    <p class="eyebrow accent">AI-powered &middot; ATS-optimized</p>
+    <h1 class="title">Resume Tailor</h1>
+    <p class="tagline">Paste a job description and get resume bullets grounded in your real experience &mdash; reviewed, polished, and compiled to a professional PDF in minutes.</p>
+
+    <div class="stepper" id="stepper"></div>
+
+    <!-- Step 1 -->
+    <section class="card">
+      <div class="stepHead"><span class="stepNum">01</span><h2>Job Description</h2></div>
+      <p class="stepSub">Tell us who you're applying to.</p>
+
+      <div class="row2">
+        <div>
+          <label class="fieldLabel" for="companyName">Company Name</label>
+          <input class="input" id="companyName" placeholder="e.g. Netflix" />
+        </div>
+        <div>
+          <label class="fieldLabel" for="positionName">Position Name</label>
+          <input class="input" id="positionName" placeholder="e.g. AI Trainee" />
+        </div>
+      </div>
+
+      <label class="fieldLabel" for="jdText">Job Description</label>
+      <textarea class="textarea" id="jdText" rows="10" placeholder="Paste the full job description here..."></textarea>
+
+      <label class="fieldLabel" for="jdFile">Or upload a JD file (JSON or plain text)</label>
+      <div class="fileRow">
+        <label class="btn btnGhost" for="jdFile">Browse files</label>
+        <span class="fileName" id="jdFileName">No file selected</span>
+        <input class="fileInputHidden" id="jdFile" type="file" accept=".json,.txt" />
+      </div>
+    </section>
+
+    <!-- Step 2 -->
+    <section class="card">
+      <div class="stepHead"><span class="stepNum">02</span><h2>Generate Bullets</h2></div>
+      <p class="stepSub">AI drafts ATS-optimized bullets from your evidence files.</p>
+      <button class="btn btnPrimary btnLg btnBlock" id="generateBtn">&#10024; Generate ATS-optimized bullets</button>
+      <div id="generateStatus" class="statusMsg"></div>
+    </section>
+
+    <!-- Step 3 -->
+    <section class="card" id="reviewCard" hidden>
+      <div class="stepHead"><span class="stepNum">03</span><h2>Review &amp; Polish</h2></div>
+      <p class="stepSub">Fine-tune language, length, and impact before you export.</p>
+      <div id="bulletEditor"></div>
+
+      <div class="hr"></div>
+      <p class="eyebrow">Columbia coursework</p>
+      <p class="caption" id="courseCaption"></p>
+      <div id="courseChips" class="chips"></div>
+
+      <div class="hr"></div>
+      <p class="eyebrow">Academic projects</p>
+      <p class="caption" id="projectCaption"></p>
+      <div id="projectChips" class="chips"></div>
+
+      <div class="hr"></div>
+      <p class="eyebrow">Copy-ready</p>
+      <p class="caption">Combined bullets per company, ready to paste elsewhere.</p>
+      <div id="combinedBlocks"></div>
+    </section>
+
+    <!-- Step 4 -->
+    <section class="card" id="exportCard" hidden>
+      <div class="stepHead"><span class="stepNum">04</span><h2>Export</h2></div>
+      <p class="stepSub">Compile your tailored resume to a polished PDF.</p>
+      <button class="btn btnPrimary btnLg btnBlock" id="compileBtn">&#128196; Compile resume PDF</button>
+      <div id="compileStatus" class="statusMsg"></div>
+
+      <details id="reportDetails" class="reportDetails" hidden>
+        <summary id="reportSummary">Build report</summary>
+        <pre id="reportCode" class="reportCode"></pre>
+        <p class="caption">Checks are deterministic: page count, wrapped-line orphans, repeated starting verbs, figures absent from your evidence files, skills outside the inventory, and JD keyword coverage.</p>
+      </details>
+
+      <div id="previewBlock" hidden>
+        <p class="eyebrow" style="margin-top:20px">Preview</p>
+        <iframe id="pdfPreview" class="pdfPreview"></iframe>
+        <div class="row2" style="margin-top:12px">
+          <a class="btn btnGhost btnBlock" id="downloadPdf" download>&#8681; Download PDF</a>
+          <a class="btn btnGhost btnBlock" id="downloadTex" download>&lt;/&gt; Download TeX</a>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="/assets/app.js?v=3"></script>
+</body>
+</html>

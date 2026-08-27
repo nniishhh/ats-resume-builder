@@ -12,16 +12,24 @@ dependencies = [
     "google-cloud-aiplatform>=1.40.0",
     "streamlit==1.54.0",
     "streamlit-pdf==1.0.8",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.32.0",
+    "python-multipart>=0.0.12",
 ]
 
 [project.scripts]
 resume-bullets = "main_code.resume_bullet_workflow:main"
 build-resume = "main_code.build_resume:main"
+resume-web = "main_code.api_server:run"
 
 [tool.hatch.build.targets.wheel]
 
 [tool.hatch.build.targets.wheel.force-include]
+"main_code/__init__.py" = "main_code/__init__.py"
 "main_code/resume_bullet_workflow.py" = "main_code/resume_bullet_workflow.py"
 "main_code/workflow_prompts.py" = "main_code/workflow_prompts.py"
 "main_code/build_resume.py" = "main_code/build_resume.py"
 "main_code/app.py" = "main_code/app.py"
+"main_code/api_server.py" = "main_code/api_server.py"
+"main_code/layout.py" = "main_code/layout.py"
+"main_code/qa_report.py" = "main_code/qa_report.py"

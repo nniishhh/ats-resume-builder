@@ -30,8 +30,6 @@ RUN pip install --no-cache-dir .
 EXPOSE 8080
 
 # Cloud Run sets PORT=8080 by default
-CMD ["streamlit", "run", "main_code/app.py", \
-     "--server.port=8080", \
-     "--server.address=0.0.0.0", \
-     "--server.headless=true", \
-     "--browser.gatherUsageStats=false"]
+CMD ["uvicorn", "main_code.api_server:app", \
+     "--host", "0.0.0.0", \
+     "--port", "8080"]
