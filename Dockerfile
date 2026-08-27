@@ -5,6 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         cabextract \
         fontconfig \
+        poppler-utils \
         texlive-xetex \
         texlive-fonts-recommended \
         texlive-latex-extra \
