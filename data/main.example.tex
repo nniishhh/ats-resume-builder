@@ -20,6 +20,12 @@
 \setmainfont{Times New Roman}
 
 \pagestyle{empty}
+
+% Uniform inter-word spacing everywhere, including after lowercase abbreviations
+% like "vs." — without this, LaTeX's sentence-spacing heuristic misreads them as
+% sentence-ending periods and inserts a visibly wider gap.
+\frenchspacing
+
 \titleformat{\section}{\large\bfseries\uppercase}{}{0em}{}[\titlerule]
 \titlespacing{\section}{0pt}{12pt}{6pt}
 \setlist[itemize]{leftmargin=*, itemsep=2pt, topsep=2pt, parsep=0pt}
