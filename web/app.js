@@ -1,99 +1,214 @@
 (() => {
   "use strict";
 
-  const API = "";
+  const $ = (id) => document.getElementById(id);
+  const icon = (name, size = 15) =>
+    `<svg width="${size}" height="${size}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+
   const state = {
     status: null,
     bullets: null,
+    academicProjects: [],
     selectedCourses: [],
     selectedTopics: [],
-    academicProjects: [],
     jdSignals: {},
     companyName: "",
     positionName: "",
     jdText: "",
-    stage: 0, // 0=input, 2=bullets ready, 3=compiled
-    lastCompile: null,
+    stage: 0, // 0 = JD, 1 = generate, 2 = review, 3 = exported
+    compiled: null,
   };
 
-  const $ = (id) => document.getElementById(id);
-
-  function titleCase(s) {
-    return s.replace(/_/g, " ").replace(/\w\S*/g, (t) => t[0].toUpperCase() + t.slice(1));
-  }
+  const titleCase = (s) =>
+    s.replace(/_/g, " ").replace(/\w\S*/g, (t) => t[0].toUpperCase() + t.slice(1));
 
   async function api(path, opts) {
-    const res = await fetch(API + path, opts);
+    const res = await fetch(path, opts);
     if (!res.ok) {
       let detail = res.statusText;
       try {
-        const body = await res.json();
-        detail = body.detail || detail;
+        detail = (await res.json()).detail || detail;
       } catch (_) {}
       throw new Error(detail);
     }
     return res.json();
   }
 
+  function setStatus(el, text, stateName) {
+    if (!text) {
+      el.removeAttribute("data-state");
+      el.textContent = "";
+      return;
+    }
+    el.setAttribute("data-state", stateName);
+    el.textContent = text;
+  }
+
+  // ── Card collapse ────────────────────────────────────────────────────────
+  // Steps collapse once they're behind you, so a finished JD doesn't push the
+  // bullets you're actually editing off the screen.
+
+  function setCard(id, { open, summary }) {
+    const card = $(id);
+    if (!card) return;
+    if (open !== undefined) {
+      card.classList.toggle("collapsed", !open);
+      const head = card.querySelector(".cardHead");
+      if (head && head.tagName === "BUTTON") head.setAttribute("aria-expanded", String(open));
+    }
+    if (summary !== undefined) {
+      const subEl = card.querySelector('[data-role="sub"]');
+      const sumEl = card.querySelector('[data-role="summary"]');
+      if (subEl && sumEl) {
+        const showSummary = Boolean(summary) && card.classList.contains("collapsed");
+        sumEl.textContent = summary || "";
+        sumEl.hidden = !showSummary;
+        subEl.hidden = showSummary;
+      }
+    }
+  }
+
+  document.querySelectorAll(".cardHead[data-toggle]").forEach((head) => {
+    head.addEventListener("click", () => {
+      const card = $(head.dataset.toggle);
+      const willOpen = card.classList.contains("collapsed");
+      setCard(head.dataset.toggle, { open: willOpen });
+      setCard(head.dataset.toggle, { summary: cardSummary(head.dataset.toggle) });
+    });
+  });
+
+  function cardSummary(id) {
+    if (id === "card-jd") {
+      const c = $("companyName").value.trim();
+      const p = $("positionName").value.trim();
+      if (!c && !p) return "";
+      return [c, p].filter(Boolean).join(" — ");
+    }
+    if (id === "card-review" && state.bullets) {
+      const roles = Object.keys(state.bullets).length;
+      const n = Object.values(state.bullets).reduce((a, b) => a + b.length, 0);
+      return `${n} bullets across ${roles} roles`;
+    }
+    return "";
+  }
+
   // ── Stepper ──────────────────────────────────────────────────────────────
-  const STEPS = ["Job Description", "Generate", "Review & Polish", "Export"];
+
+  const STEPS = [
+    { label: "Job description", card: "card-jd" },
+    { label: "Generate", card: "card-generate" },
+    { label: "Review", card: "card-review" },
+    { label: "Export", card: "card-export" },
+  ];
+
   function renderStepper() {
     const el = $("stepper");
     el.innerHTML = "";
-    STEPS.forEach((label, i) => {
-      const st = i < state.stage ? "done" : i === state.stage ? "active" : "";
-      const marker = st === "done" ? "&#10003;" : String(i + 1);
-      const step = document.createElement("div");
-      step.className = "step " + st;
-      step.innerHTML = `<span class="dot">${marker}</span><span class="label">${label}</span>`;
-      el.appendChild(step);
+    STEPS.forEach((step, i) => {
+      const btn = document.createElement("button");
+      const cls = i < state.stage ? "done" : i === state.stage ? "active" : "";
+      btn.className = `stepBtn ${cls}`;
+      btn.type = "button";
+      btn.innerHTML =
+        `<span class="dot">${i < state.stage ? icon("check", 13) : i + 1}</span>` +
+        `<span class="label">${step.label}</span>`;
+      const reachable = i <= state.stage && !$(step.card).hidden;
+      btn.disabled = !reachable;
+      if (i === state.stage) btn.setAttribute("aria-current", "step");
+      btn.addEventListener("click", () => {
+        const card = $(step.card);
+        if (card.hidden) return;
+        setCard(step.card, { open: true });
+        setCard(step.card, { summary: "" });
+        card.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+      el.appendChild(btn);
       if (i < STEPS.length - 1) {
-        const line = document.createElement("div");
-        line.className = "stepLine " + (i < state.stage ? "done" : "");
+        const line = document.createElement("span");
+        line.className = `stepLine ${i < state.stage ? "done" : ""}`;
         el.appendChild(line);
       }
     });
   }
 
-  // ── Bootstrapping / sidebar ──────────────────────────────────────────────
+  // ── Sidebar (mobile disclosure) ──────────────────────────────────────────
+
+  $("sidebarToggle").addEventListener("click", () => {
+    const bar = $("sidebar");
+    const open = bar.dataset.open !== "true";
+    bar.dataset.open = String(open);
+    $("sidebarToggle").setAttribute("aria-expanded", String(open));
+  });
+
+  // ── Bootstrap ────────────────────────────────────────────────────────────
+
   async function loadStatus() {
-    const status = await api("/api/status");
-    state.status = status;
+    const s = await api("/api/status");
+    state.status = s;
 
-    const modelSelect = $("modelSelect");
-    modelSelect.innerHTML = "";
-    status.model_choices.forEach((m) => {
-      const opt = document.createElement("option");
-      opt.value = m;
-      opt.textContent = m;
-      modelSelect.appendChild(opt);
+    const model = $("modelSelect");
+    model.innerHTML = "";
+    s.model_choices.forEach((m) => {
+      const o = document.createElement("option");
+      o.value = m;
+      o.textContent = m;
+      model.appendChild(o);
     });
-    modelSelect.value = status.default_model;
+    model.value = s.default_model;
+    $("modeSelect").value = s.default_generation_mode;
 
-    $("modeSelect").value = status.default_generation_mode;
-
-    const evEl = $("evidenceList");
-    evEl.innerHTML = "";
-    if (status.evidence_files.length === 0) {
-      evEl.innerHTML = '<p class="caption">No work_*.json files found.</p>';
+    const ws = $("workspaceStatus");
+    ws.innerHTML = "";
+    if (s.evidence_files.length === 0) {
+      ws.appendChild(statusRow("No evidence files found", "", false));
     } else {
-      status.evidence_files.forEach((f) => {
-        const chip = document.createElement("div");
-        chip.className = "fileChip";
-        chip.innerHTML = `<span>${titleCase(f.company)}</span><span class="count">${f.min}–${f.max}</span>`;
-        evEl.appendChild(chip);
-      });
+      s.evidence_files.forEach((f) =>
+        ws.appendChild(statusRow(titleCase(f.company), `${f.min}–${f.max}`, true))
+      );
     }
+    ws.appendChild(
+      statusRow(
+        s.template_exists ? "Template ready" : "main.tex not found",
+        "",
+        s.template_exists
+      )
+    );
 
-    const tmpl = $("templateStatus");
-    if (status.template_exists) {
-      tmpl.textContent = "data/main.tex ✓";
-      tmpl.className = "templateStatus ok";
+    updateReadiness();
+  }
+
+  function statusRow(name, count, ok) {
+    const row = document.createElement("div");
+    row.className = `statusRow${ok ? "" : " bad"}`;
+    row.innerHTML =
+      `<span class="dot"></span><span>${name}</span>` +
+      (count ? `<span class="count">${count}</span>` : "");
+    return row;
+  }
+
+  function updateReadiness() {
+    const s = state.status;
+    const hint = $("generateHint");
+    const reasons = [];
+    if (s) {
+      if (!s.evidence_files.length) reasons.push("no work_*.json evidence files in data/");
+      if (!s.template_exists) reasons.push("data/main.tex is missing");
+    }
+    const hasJd = $("jdText").value.trim() && $("companyName").value.trim();
+    if (!reasons.length && !hasJd) reasons.push("add a company name and job description above");
+
+    $("generateBtn").disabled = reasons.length > 0;
+    if (reasons.length) {
+      hint.hidden = false;
+      hint.innerHTML = `${icon("alert", 15)}<span>Can't generate yet — ${reasons.join("; ")}.</span>`;
     } else {
-      tmpl.textContent = "data/main.tex not found.";
-      tmpl.className = "templateStatus bad";
+      hint.hidden = true;
     }
   }
+
+  ["jdText", "companyName", "positionName"].forEach((id) =>
+    $(id).addEventListener("input", updateReadiness)
+  );
 
   async function loadJdDefault() {
     try {
@@ -106,14 +221,16 @@
 
   async function loadAcademicProjects() {
     try {
-      const d = await api("/api/academic-projects");
-      state.academicProjects = d.projects || [];
+      state.academicProjects = (await api("/api/academic-projects")).projects || [];
     } catch (_) {
       state.academicProjects = [];
     }
   }
 
-  // ── JD file upload ───────────────────────────────────────────────────────
+  // ── JD upload ────────────────────────────────────────────────────────────
+
+  $("jdFileBtn").addEventListener("click", () => $("jdFile").click());
+
   $("jdFile").addEventListener("change", async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -127,43 +244,76 @@
     } catch (_) {
       if (raw.includes("---")) {
         const [header, ...rest] = raw.split("---");
-        const body = rest.join("---").trim();
         header.trim().split("\n").forEach((line) => {
-          const idx = line.indexOf(":");
-          if (idx === -1) return;
-          const k = line.slice(0, idx).trim();
-          const v = line.slice(idx + 1).trim();
+          const i = line.indexOf(":");
+          if (i === -1) return;
+          const k = line.slice(0, i).trim();
+          const v = line.slice(i + 1).trim();
           if (k === "company_name") $("companyName").value = v;
           else if (k === "position_name") $("positionName").value = v;
         });
-        $("jdText").value = body;
+        $("jdText").value = rest.join("---").trim();
       } else {
         $("jdText").value = raw;
       }
     }
+    updateReadiness();
   });
 
-  // ── Step 2: Generate ─────────────────────────────────────────────────────
+  // ── Generation progress ──────────────────────────────────────────────────
+  // The wait is ~30s. These labels track the pipeline's real stages, and the
+  // bar is deliberately indeterminate — the API returns once, so a percentage
+  // would be invented.
+
+  const PHASES = [
+    [0, "Reading the job description…"],
+    [4, "Extracting ranking signals and seniority…"],
+    [9, "Drafting bullets from your evidence…"],
+    [20, "Checking length, verbs and grounding…"],
+    [30, "Selecting coursework, projects and skills…"],
+  ];
+
+  let progressTimer = null;
+
+  function startProgress() {
+    const started = Date.now();
+    $("generateProgress").hidden = false;
+
+    const skel = $("generateSkeleton");
+    const roles = state.status?.evidence_files?.length || 3;
+    skel.innerHTML = Array.from({ length: Math.min(roles, 4) })
+      .map(
+        () =>
+          '<div class="skelGroup"><div class="skelBar head"></div>' +
+          '<div class="skelBar"></div><div class="skelBar short"></div></div>'
+      )
+      .join("");
+
+    progressTimer = setInterval(() => {
+      const secs = Math.floor((Date.now() - started) / 1000);
+      $("progressElapsed").textContent = `${secs}s`;
+      const phase = [...PHASES].reverse().find(([t]) => secs >= t);
+      if (phase) $("progressLabel").textContent = phase[1];
+    }, 500);
+  }
+
+  function stopProgress() {
+    clearInterval(progressTimer);
+    progressTimer = null;
+    $("generateProgress").hidden = true;
+  }
+
+  // ── Generate ─────────────────────────────────────────────────────────────
+
   $("generateBtn").addEventListener("click", async () => {
     const companyName = $("companyName").value.trim();
     const positionName = $("positionName").value.trim();
     const jdText = $("jdText").value.trim();
-    const statusEl = $("generateStatus");
 
-    if (!companyName || !jdText) {
-      statusEl.className = "statusMsg err";
-      statusEl.textContent = "Company name and job description are required.";
-      return;
-    }
-    if (!state.status || !state.status.evidence_files.length || !state.status.template_exists) {
-      statusEl.className = "statusMsg err";
-      statusEl.textContent = "Evidence files or data/main.tex are missing — check the sidebar.";
-      return;
-    }
-
-    statusEl.className = "statusMsg loading";
-    statusEl.textContent = "Analyzing JD and generating bullets — this takes ~30s...";
     $("generateBtn").disabled = true;
+    setStatus($("generateStatus"), "", null);
+    $("generateHint").hidden = true;
+    startProgress();
 
     try {
       const result = await api("/api/generate", {
@@ -179,48 +329,76 @@
         }),
       });
 
-      state.bullets = result.bullets;
-      state.selectedCourses = result.selected_courses || [];
-      state.selectedTopics = result.selected_academic_topics || [];
-      state.jdSignals = result.jd_signals || {};
-      state.companyName = companyName;
-      state.positionName = positionName;
-      state.jdText = jdText;
-      state.stage = 2;
-      state.lastCompile = null;
+      Object.assign(state, {
+        bullets: result.bullets,
+        selectedCourses: result.selected_courses || [],
+        selectedTopics: result.selected_academic_topics || [],
+        jdSignals: result.jd_signals || {},
+        companyName,
+        positionName,
+        jdText,
+        stage: 2,
+        compiled: null,
+      });
 
-      statusEl.className = "statusMsg ok";
-      statusEl.textContent = `Generated bullets for ${Object.keys(result.bullets).length} companies.`;
+      stopProgress();
+      const seniority = state.jdSignals.seniority;
+      setStatus(
+        $("generateStatus"),
+        `Drafted ${Object.keys(result.bullets).length} roles` +
+          (seniority ? ` — pitched at ${seniority} level.` : "."),
+        "ok"
+      );
 
-      renderStepper();
-      renderReview();
-      $("reviewCard").hidden = false;
-      $("exportCard").hidden = false;
+      $("card-review").hidden = false;
+      $("card-export").hidden = false;
       $("previewBlock").hidden = true;
       $("reportDetails").hidden = true;
-      $("compileStatus").textContent = "";
+      setStatus($("compileStatus"), "", null);
+
+      renderReview();
+      // Fold the JD away — you're done with it — and open what you now need.
+      setCard("card-jd", { open: false });
+      setCard("card-jd", { summary: cardSummary("card-jd") });
+      setCard("card-review", { open: true });
+      $("card-review").classList.add("reveal");
+      renderStepper();
+      updateActionBar();
+      $("card-review").scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (err) {
-      statusEl.className = "statusMsg err";
-      statusEl.textContent = "Generation failed: " + err.message;
+      stopProgress();
+      setStatus($("generateStatus"), `Generation failed: ${err.message}`, "err");
     } finally {
       $("generateBtn").disabled = false;
+      updateReadiness();
     }
   });
 
-  // ── Step 3: Review & Polish ──────────────────────────────────────────────
-  function charBadge(n, min, max) {
-    if (n >= min && n <= max) return `<span class="charBadge ok">${n} chars</span>`;
-    if (n < min) return `<span class="charBadge under">${n} chars — ${min - n} under min</span>`;
-    return `<span class="charBadge over">${n} chars — ${n - max} over max</span>`;
-  }
+  // ── Review ───────────────────────────────────────────────────────────────
 
-  function currentBulletsFromDom() {
+  function bulletsFromDom() {
     const out = {};
     Object.keys(state.bullets).forEach((company) => {
-      const areas = document.querySelectorAll(`textarea[data-company="${company}"][data-role="bullet"]`);
-      out[company] = Array.from(areas).map((a) => a.value);
+      out[company] = Array.from(
+        document.querySelectorAll(`textarea[data-company="${company}"]`)
+      ).map((a) => a.value);
     });
     return out;
+  }
+
+  function paintMeter(row, value) {
+    const { min_bullet_chars: MIN, max_bullet_chars: MAX } = state.status;
+    const n = value.length;
+    const stateName = n < MIN ? "under" : n > MAX ? "over" : "ok";
+    row.dataset.state = stateName;
+    row.querySelector(".meterFill").style.width =
+      `${Math.min(100, (n / MAX) * 100).toFixed(1)}%`;
+    row.querySelector(".meterLabel").textContent =
+      stateName === "ok"
+        ? `${n} · in range`
+        : stateName === "under"
+        ? `${n} · ${MIN - n} under`
+        : `${n} · ${n - MAX} over`;
   }
 
   function renderReview() {
@@ -228,63 +406,114 @@
     const editor = $("bulletEditor");
     editor.innerHTML = "";
 
-    Object.entries(state.bullets).forEach(([company, bulletList]) => {
+    Object.entries(state.bullets).forEach(([company, list]) => {
       const display = titleCase(company);
       const block = document.createElement("div");
-      block.className = "companyBlock";
-
-      const regenId = `regen_${company}`;
+      block.className = "company";
       block.innerHTML = `
-        <h3 class="companyName">${display}</h3>
-        <div class="regenRow">
-          <input class="input" id="${regenId}" placeholder="Optional instruction — e.g. lead with the Airflow work; drop 'predictive'" />
-          <button class="btn btnQuiet" data-action="regen" data-company="${company}">Regenerate</button>
+        <div class="companyHead">
+          <h3>${display}</h3>
+          <span class="meta">${list.length} bullets</span>
+          <span class="spacer"></span>
+          <button class="btn btnQuiet" data-act="toggle-regen" type="button">
+            ${icon("refresh", 14)} Regenerate
+          </button>
         </div>
-        <div class="bulletList" data-company="${company}"></div>
-      `;
-      editor.appendChild(block);
+        <div class="regenPanel" data-open="false">
+          <input class="input" placeholder="Optional steer — e.g. lead with the Airflow work"
+                 aria-label="Regeneration instruction for ${display}" />
+          <button class="btn btnGhost" data-act="run-regen" type="button">Run</button>
+        </div>
+        <div class="bulletList"></div>`;
 
-      const list = block.querySelector(".bulletList");
-      bulletList.forEach((bullet, i) => {
+      const list_ = block.querySelector(".bulletList");
+      list.forEach((bullet, i) => {
         const row = document.createElement("div");
         row.className = "bulletRow";
         row.innerHTML = `
-          <textarea class="textarea" data-company="${company}" data-role="bullet" data-idx="${i}"></textarea>
-          <div class="badgeHolder"></div>
-        `;
+          <textarea class="textarea" data-company="${company}" data-idx="${i}"
+                    aria-label="${display} bullet ${i + 1}"></textarea>
+          <div class="meter">
+            <span class="meterTrack">
+              <span class="meterFill"></span>
+              <span class="meterTick" style="left:${((MIN / MAX) * 100).toFixed(1)}%"></span>
+            </span>
+            <span class="meterLabel"></span>
+          </div>`;
         const ta = row.querySelector("textarea");
         ta.value = bullet;
-        const badgeHolder = row.querySelector(".badgeHolder");
-        const updateBadge = () => {
-          badgeHolder.innerHTML = charBadge(ta.value.length, MIN, MAX);
-        };
+        paintMeter(row, bullet);
         ta.addEventListener("input", () => {
-          updateBadge();
+          paintMeter(row, ta.value);
           renderCombined();
+          updateActionBar();
         });
-        updateBadge();
-        list.appendChild(row);
+        list_.appendChild(row);
       });
+
+      const panel = block.querySelector(".regenPanel");
+      block.querySelector('[data-act="toggle-regen"]').addEventListener("click", () => {
+        const open = panel.dataset.open !== "true";
+        panel.dataset.open = String(open);
+        if (open) panel.querySelector("input").focus();
+      });
+      block.querySelector('[data-act="run-regen"]').addEventListener("click", (e) =>
+        regenerate(company, panel.querySelector("input").value, e.currentTarget)
+      );
+
+      editor.appendChild(block);
     });
 
-    editor.querySelectorAll('[data-action="regen"]').forEach((btn) => {
-      btn.addEventListener("click", () => regenerateCompany(btn.dataset.company));
-    });
+    renderChips(
+      $("courseChips"),
+      Array.from(new Set([...state.status.default_courses, ...state.selectedCourses])),
+      state.selectedCourses,
+      (next) => (state.selectedCourses = next)
+    );
+    $("courseCaption").textContent =
+      `Shown under Education. The model picked ${state.selectedCourses.length} for this posting — add or drop any.`;
 
-    renderCourseChips();
-    renderProjectChips();
+    const topics = state.academicProjects
+      .map((p) => String(p.Topic || "").trim())
+      .filter(Boolean);
+    renderChips(
+      $("projectChips"),
+      Array.from(new Set([...topics, ...state.selectedTopics])),
+      state.selectedTopics,
+      (next) => (state.selectedTopics = next)
+    );
+    $("projectCaption").textContent =
+      `Shown under Academic Projects. The model picked ${state.selectedTopics.length} — swap in any of your others.`;
+
     renderCombined();
   }
 
-  async function regenerateCompany(company) {
-    const instrEl = $(`regen_${company}`);
-    const btn = document.querySelector(`[data-action="regen"][data-company="${company}"]`);
-    const instruction = instrEl.value;
+  function renderChips(wrap, options, selected, onChange) {
+    wrap.innerHTML = "";
+    options.forEach((name) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "chip";
+      chip.setAttribute("aria-pressed", String(selected.includes(name)));
+      chip.innerHTML = `<span class="tick">${icon("check", 13)}</span><span>${name}</span>`;
+      chip.addEventListener("click", () => {
+        const on = chip.getAttribute("aria-pressed") === "true";
+        chip.setAttribute("aria-pressed", String(!on));
+        const next = on ? selected.filter((x) => x !== name) : [...selected, name];
+        selected = next;
+        onChange(next);
+      });
+      wrap.appendChild(chip);
+    });
+  }
+
+  async function regenerate(company, instruction, btn) {
+    const original = btn.innerHTML;
     btn.disabled = true;
-    btn.textContent = "Regenerating…";
+    btn.textContent = "Working…";
     try {
-      const otherBullets = currentBulletsFromDom();
-      delete otherBullets[company];
+      const others = bulletsFromDom();
+      delete others[company];
       const result = await api("/api/regenerate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -293,97 +522,93 @@
           jd_text: state.jdText,
           instruction,
           model: $("modelSelect").value,
-          other_bullets: otherBullets,
+          other_bullets: others,
           seniority: state.jdSignals.seniority || "",
         }),
       });
-      state.bullets[company] = result.bullets;
+      state.bullets = { ...bulletsFromDom(), [company]: result.bullets };
       renderReview();
+      updateActionBar();
     } catch (err) {
-      alert(`Regeneration failed: ${err.message}`);
+      setStatus($("compileStatus"), `Regeneration failed: ${err.message}`, "err");
     } finally {
       btn.disabled = false;
-      btn.textContent = "Regenerate";
+      btn.innerHTML = original;
     }
-  }
-
-  function renderCourseChips() {
-    const wrap = $("courseChips");
-    wrap.innerHTML = "";
-    const options = Array.from(new Set([...state.status.default_courses, ...state.selectedCourses]));
-    $("courseCaption").textContent =
-      `Listed under Education. AI picked ~${state.status.default_top_course_count} for this role — add or drop any you like.`;
-    options.forEach((course) => {
-      const chip = document.createElement("button");
-      chip.type = "button";
-      chip.className = "chip";
-      chip.textContent = course;
-      chip.dataset.pressed = state.selectedCourses.includes(course);
-      chip.addEventListener("click", () => {
-        const on = chip.dataset.pressed === "true";
-        chip.dataset.pressed = !on;
-        if (on) {
-          state.selectedCourses = state.selectedCourses.filter((c) => c !== course);
-        } else {
-          state.selectedCourses.push(course);
-        }
-      });
-      wrap.appendChild(chip);
-    });
-  }
-
-  function renderProjectChips() {
-    const wrap = $("projectChips");
-    wrap.innerHTML = "";
-    const topics = state.academicProjects
-      .map((p) => String(p.Topic || "").trim())
-      .filter(Boolean);
-    const options = Array.from(new Set([...topics, ...state.selectedTopics]));
-    $("projectCaption").textContent =
-      `Listed under Academic Projects. AI picked ~${state.status.default_top_academic_project_count} most relevant — swap in any of your projects.`;
-    options.forEach((topic) => {
-      const chip = document.createElement("button");
-      chip.type = "button";
-      chip.className = "chip";
-      chip.textContent = topic;
-      chip.dataset.pressed = state.selectedTopics.includes(topic);
-      chip.addEventListener("click", () => {
-        const on = chip.dataset.pressed === "true";
-        chip.dataset.pressed = !on;
-        if (on) {
-          state.selectedTopics = state.selectedTopics.filter((t) => t !== topic);
-        } else {
-          state.selectedTopics.push(topic);
-        }
-      });
-      wrap.appendChild(chip);
-    });
   }
 
   function renderCombined() {
     const wrap = $("combinedBlocks");
     wrap.innerHTML = "";
-    const bullets = currentBulletsFromDom();
-    Object.entries(bullets).forEach(([company, list]) => {
-      const display = titleCase(company);
-      const combined = list.filter((b) => b.trim()).map((b) => `- ${b.trim()}`).join("\n");
+    Object.entries(bulletsFromDom()).forEach(([company, list]) => {
+      const text = list.filter((b) => b.trim()).map((b) => `• ${b.trim()}`).join("\n");
       const block = document.createElement("div");
-      block.className = "combinedBlock";
-      block.innerHTML = `<p class="label">${display} — combined</p><textarea class="textarea" readonly></textarea>`;
-      block.querySelector("textarea").value = combined;
+      block.className = "copyBlock";
+      block.innerHTML = `
+        <div class="copyHead">
+          <span class="name">${titleCase(company)}</span>
+          <button class="btn btnQuiet" type="button">${icon("copy", 14)} Copy</button>
+        </div>
+        <pre class="copyBody"></pre>`;
+      block.querySelector(".copyBody").textContent = text;
+
+      const btn = block.querySelector("button");
+      btn.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch (_) {
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand("copy");
+          ta.remove();
+        }
+        btn.innerHTML = `${icon("check", 14)} Copied`;
+        setTimeout(() => (btn.innerHTML = `${icon("copy", 14)} Copy`), 1600);
+      });
       wrap.appendChild(block);
     });
   }
 
-  // ── Step 4: Export ───────────────────────────────────────────────────────
+  // ── Action bar ───────────────────────────────────────────────────────────
+
+  function updateActionBar() {
+    const bar = $("actionBar");
+    if (!state.bullets) {
+      bar.dataset.show = "false";
+      return;
+    }
+    const b = bulletsFromDom();
+    const roles = Object.keys(b).length;
+    const total = Object.values(b).reduce((a, l) => a + l.length, 0);
+    const { min_bullet_chars: MIN, max_bullet_chars: MAX } = state.status;
+    const off = Object.values(b)
+      .flat()
+      .filter((t) => t.length < MIN || t.length > MAX).length;
+
+    $("actionSummary").innerHTML =
+      `<strong>${total}</strong> bullets across <strong>${roles}</strong> roles` +
+      (off ? ` · <span style="color:var(--warn)">${off} outside the length band</span>` : "");
+    bar.dataset.show = "true";
+  }
+
+  $("barCompileBtn").addEventListener("click", () => $("compileBtn").click());
+  $("barReviewBtn").addEventListener("click", () => {
+    setCard("card-review", { open: true });
+    setCard("card-review", { summary: "" });
+    $("card-review").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
+  // ── Compile ──────────────────────────────────────────────────────────────
+
   $("compileBtn").addEventListener("click", async () => {
-    const statusEl = $("compileStatus");
-    statusEl.className = "statusMsg loading";
-    statusEl.textContent = "Injecting bullets and compiling LaTeX…";
-    $("compileBtn").disabled = true;
+    const btn = $("compileBtn");
+    btn.disabled = true;
+    $("barCompileBtn").disabled = true;
+    setStatus($("compileStatus"), "Injecting bullets, compiling, fitting to one page…", "busy");
 
     try {
-      const bullets = currentBulletsFromDom();
       const result = await api("/api/compile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -392,50 +617,53 @@
           position_name: state.positionName,
           jd_text: state.jdText,
           model: $("modelSelect").value,
-          bullets,
+          bullets: bulletsFromDom(),
           selected_courses: state.selectedCourses,
           selected_academic_topics: state.selectedTopics,
           jd_signals: state.jdSignals,
         }),
       });
 
-      state.lastCompile = result;
+      state.compiled = result;
       state.stage = 3;
-      renderStepper();
+      setStatus($("compileStatus"), "Compiled to a single page.", "ok");
 
-      statusEl.className = "statusMsg ok";
-      statusEl.textContent = "Resume compiled successfully!";
-
-      const reportDetails = $("reportDetails");
-      const reportSummary = $("reportSummary");
-      reportDetails.hidden = false;
-      reportDetails.open = !result.qa_report_clean;
-      reportSummary.textContent = "Build report" + (result.qa_report_clean ? "" : "  —  issues found");
+      $("reportDetails").hidden = false;
+      $("reportDetails").open = !result.qa_report_clean;
       $("reportCode").textContent = result.qa_report_text;
+      const badge = $("reportBadge");
+      badge.textContent = result.qa_report_clean ? "clean" : "issues found";
+      badge.dataset.issues = String(!result.qa_report_clean);
 
-      const pdfDataUrl = "data:application/pdf;base64," + result.pdf_base64;
-      $("pdfPreview").src = pdfDataUrl;
-      $("downloadPdf").href = pdfDataUrl;
+      const pdfUrl = `data:application/pdf;base64,${result.pdf_base64}`;
+      $("pdfPreview").src = pdfUrl;
+      $("downloadPdf").href = pdfUrl;
       $("downloadPdf").download = result.pdf_name;
-
-      const texBlob = new Blob([result.tex_text], { type: "text/plain" });
-      $("downloadTex").href = URL.createObjectURL(texBlob);
+      $("downloadTex").href = URL.createObjectURL(
+        new Blob([result.tex_text], { type: "text/plain" })
+      );
       $("downloadTex").download = result.tex_name;
-
       $("previewBlock").hidden = false;
+      $("previewBlock").classList.add("reveal");
+
+      // Reading the PDF is the point now, so give it the screen.
+      setCard("card-review", { open: false });
+      setCard("card-review", { summary: cardSummary("card-review") });
+      renderStepper();
+      $("card-export").scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (err) {
-      statusEl.className = "statusMsg err";
-      statusEl.textContent = "Compilation failed: " + err.message;
+      setStatus($("compileStatus"), `Compilation failed: ${err.message}`, "err");
     } finally {
-      $("compileBtn").disabled = false;
+      btn.disabled = false;
+      $("barCompileBtn").disabled = false;
     }
   });
 
-  // ── Init ──────────────────────────────────────────────────────────────────
-  async function init() {
+  // ── Init ─────────────────────────────────────────────────────────────────
+
+  (async function init() {
     renderStepper();
     await Promise.all([loadStatus(), loadJdDefault(), loadAcademicProjects()]);
-  }
-
-  init();
+    updateReadiness();
+  })();
 })();
