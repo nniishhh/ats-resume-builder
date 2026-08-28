@@ -35,6 +35,7 @@ WARN = "!!"
 class QAReport:
     pages: int = 0
     trim_actions: List[str] = field(default_factory=list)
+    plan_note: str = ""
     bullet_count: int = 0
     repeated_verbs: Dict[str, int] = field(default_factory=dict)
     orphans: List[str] = field(default_factory=list)
@@ -67,6 +68,9 @@ class QAReport:
         if self.trim_actions:
             page_note += f"   ({len(self.trim_actions)} trim pass{'es' if len(self.trim_actions) != 1 else ''}: {'; '.join(self.trim_actions)})"
         rows.append(_row("Layout", self.pages == 1, page_note))
+
+        if self.plan_note:
+            rows.append(_row("Structure", True, self.plan_note))
 
         verb_note = f"{self.bullet_count} bullets, "
         if self.repeated_verbs:
@@ -204,11 +208,37 @@ def _normalised_numbers(text: str) -> set[str]:
     return out
 
 
+# Words that carry no matching signal — a keyword and the resume can phrase the
+# connective tissue differently and still mean the same thing.
+_FILLER = {
+    "a", "an", "and", "the", "of", "in", "on", "for", "with", "to", "or",
+    "experience", "strong", "using", "related", "field", "degree",
+}
+
+
+def _content_tokens(text: str) -> set[str]:
+    """Significant words, with punctuation that varies between phrasings removed."""
+    cleaned = re.sub(r"[^a-z0-9+#]+", " ", text.lower())
+    return {t for t in cleaned.split() if t and t not in _FILLER}
+
+
 def check_jd_coverage(
     must_have: Sequence[str], rendered_text: str, report: QAReport
 ) -> QAReport:
-    """Which JD must-have keywords actually appear in the finished resume."""
-    haystack = rendered_text.lower()
+    """Which JD must-have keywords actually appear in the finished resume.
+
+    Matched on content words rather than as a literal substring. A plain `in` test
+    reported "MS in Operations Research" as missing from a resume reading "MS,
+    Operations Research" — the degree was right there, only the punctuation differed,
+    and the one number meant to measure fit was wrong because of it.
+
+    All content words must be present, so this stays conservative: it forgives
+    punctuation and filler, not genuinely absent skills.
+    """
+    haystack = _content_tokens(rendered_text)
     report.jd_must_have = list(must_have)
-    report.jd_matched = [k for k in must_have if k.lower() in haystack]
+    report.jd_matched = [
+        k for k in must_have
+        if (toks := _content_tokens(k)) and toks <= haystack
+    ]
     return report

@@ -34,7 +34,9 @@ from main_code.build_resume import (
     replace_academic_projects,
     replace_columbia_coursework,
     replace_experience_bullets,
+    _plan_note,
     replace_skills,
+    reorder_sections,
     slugify,
     tighten_spacing,
 )
@@ -103,6 +105,8 @@ class CompileRequest(BaseModel):
     selected_courses: List[str]
     selected_academic_topics: List[str]
     jd_signals: Dict[str, Any] = {}
+    projects_first: bool = False
+    plan: Dict[str, Any] = {}
 
 
 # ── Status / config ──────────────────────────────────────────────────────────
@@ -195,6 +199,7 @@ def generate(req: GenerateRequest):
             selected_topics,
             selected_academic_projects,
             jd_signals,
+            plan,
         ) = run_all_with_full_selection(
             jd_path=jd_path,
             directory=DATA_DIR,
@@ -214,6 +219,7 @@ def generate(req: GenerateRequest):
         "selected_academic_topics": selected_topics,
         "selected_academic_projects": selected_academic_projects,
         "jd_signals": jd_signals,
+        "plan": plan,
     }
 
 
@@ -288,6 +294,7 @@ def compile_resume(req: CompileRequest):
             )
             new_tex = replace_skills(new_tex, skill_categories)
 
+        new_tex = reorder_sections(new_tex, bool(req.projects_first))
         new_tex = tighten_spacing(new_tex)
 
         slug = f"oranich_resume_{slugify(req.company_name)}_{slugify(req.position_name)}"
@@ -304,6 +311,8 @@ def compile_resume(req: CompileRequest):
         report = qa_report.QAReport()
         report.trim_actions = trim_actions
         report.skills_dropped = skills_dropped
+        if req.plan:
+            report.plan_note = _plan_note(req.plan)
         qa_report.check_layout(pdf_out, report)
         qa_report.check_redundancy(req.bullets, report)
         qa_report.check_grounding(req.bullets, _evidence_by_company(DATA_DIR), report)

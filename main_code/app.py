@@ -669,6 +669,7 @@ def main() -> None:
                         selected_topics,
                         selected_academic_projects,
                         jd_signals,
+                        plan,
                     ) = run_all_with_full_selection(
                         jd_path=jd_path,
                         directory=DATA_DIR,
@@ -685,6 +686,7 @@ def main() -> None:
                 st.session_state.jd_text = jd_text.strip()
                 # Drives Skills selection, JD-coverage reporting, and bullet jargon calibration.
                 st.session_state.jd_signals = jd_signals
+                st.session_state.structure_plan = plan
                 st.session_state.pop("qa_report_text", None)
                 st.session_state.editor_nonce = int(st.session_state.get("editor_nonce", 0)) + 1
                 # Clear previous PDF so stale download button disappears

@@ -346,6 +346,55 @@ def replace_academic_projects(
     return tex_content[:start_idx] + new_section + tex_content[end_idx:]
 
 
+def _plan_note(plan: Dict[str, Any]) -> str:
+    """One-line summary of how the page budget was allocated."""
+    roles = plan.get("roles") or {}
+    kept = ", ".join(f"{c} {n}" for c, n in roles.items() if n)
+    dropped = [c for c, n in roles.items() if not n]
+    note = f"{kept}; {plan.get('projects')} projects, {plan.get('coursework')} courses"
+    if plan.get("projects_first"):
+        note += "; projects lead"
+    if dropped:
+        note += f"; dropped {', '.join(dropped)}"
+    return note
+
+
+def reorder_sections(tex: str, projects_first: bool) -> str:
+    """Swap Experience and Academic Projects when the posting values built work more.
+
+    A founding-engineer posting whose first requirement is "you have shipped something
+    real" was still opening with three transit-analytics bullets, with the candidate's
+    deployed software last on the page. Reordering is the one lever that fixes that;
+    rewording cannot.
+
+    Swaps two whole blocks, so the injected content is untouched. Returns the input
+    unchanged if either anchor is missing.
+    """
+    if not projects_first:
+        return tex
+
+    def block_start(name: str) -> Optional[int]:
+        """Index where a section begins, including its own `% Name` comment line."""
+        anchor = tex.find(f"\\section{{{name}}}")
+        if anchor == -1:
+            return None
+        line_start = tex.rfind("\n", 0, anchor) + 1
+        prev_start = tex.rfind("\n", 0, line_start - 1) + 1
+        if tex[prev_start:line_start].lstrip().startswith("%"):
+            return prev_start
+        return line_start
+
+    exp = block_start("Experience")
+    proj = block_start("Academic Projects")
+    skills = block_start("Skills")
+    if exp is None or proj is None or skills is None or not exp < proj < skills:
+        return tex
+
+    # Each slice carries its own trailing blank line, so swapping whole slices keeps
+    # the spacing intact rather than stranding one section against the previous line.
+    return tex[:exp] + tex[proj:skills] + tex[exp:proj] + tex[skills:]
+
+
 def tighten_spacing(tex: str) -> str:
     """Adjust spacing and typesetting for generated resumes.
 
@@ -659,6 +708,7 @@ def build_resume(
         selected_topics,
         selected_academic_projects,
         jd_signals,
+        plan,
     ) = run_all_with_full_selection(
         jd_path=jd_path,
         directory=jd_path.parent,
@@ -701,6 +751,7 @@ def build_resume(
     new_tex = replace_columbia_coursework(new_tex, selected_courses)
     new_tex = replace_academic_projects(new_tex, selected_academic_projects)
     new_tex = replace_skills(new_tex, skill_categories)
+    new_tex = reorder_sections(new_tex, plan.get("projects_first", False))
 
     # 3b. Tighten spacing so longer generated bullets still fit one page
     new_tex = tighten_spacing(new_tex)
@@ -727,6 +778,7 @@ def build_resume(
         cleanup_aux_files(tex_out)
 
         report.trim_actions = trim_actions
+        report.plan_note = _plan_note(plan)
         qa_report.check_layout(pdf_out, report)
         qa_report.check_redundancy(bullets, report)
         qa_report.check_grounding(bullets, _evidence_by_company(jd_path.parent), report)

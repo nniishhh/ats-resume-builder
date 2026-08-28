@@ -5,6 +5,9 @@ from typing import Any, Dict, List, Sequence, Tuple
 # sequential and single_prompt paths, plus both of their repair rounds, all send
 # the same rules — four hand-synced copies is how they drift apart.
 LEXICAL_DIVERSITY_RULES = [
+    "Do NOT repeat the same headline figure in consecutive bullets. If two bullets for "
+    "one company both draw on the same scale metric (e.g. '10K daily deliveries'), state "
+    "it in the stronger bullet and let the other stand on its own result.",
     "Avoid repeating the same connector or phrasing across bullets.",
     "Ensure lexical variety in verbs, connectors, and clause structure.",
     "Do NOT repeat the same tool in every bullet when context is already clear.",
@@ -363,9 +366,15 @@ def build_jd_signals_prompts(jd_text: str) -> Tuple[str, str]:
         '  "domain": short phrase, e.g. "transit operations" or "adtech",\n'
         '  "must_have": [concrete skills/tools/methods stated as required],\n'
         '  "nice_to_have": [stated as preferred or bonus],\n'
+        '  "credentials": [degree, major, certification and eligibility requirements],\n'
         '  "top_3_screens": [the three things this JD is really filtering on, in plain language]\n'
         "}\n\n"
         "RULES\n"
+        "- credentials holds ONLY things a bullet cannot change: required degrees, fields of\n"
+        "  study, certifications, work authorization, years of experience. Put them there and\n"
+        "  NOT in must_have — must_have is scored against the finished resume, and a degree\n"
+        "  requirement is either already met by the Education section or cannot be met at all.\n"
+        "  Examples: \"Master's degree\", \"PhD\", \"Operations Research\", \"2+ years experience\".\n"
         "- must_have and nice_to_have hold SHORT KEYWORD PHRASES, not sentences.\n"
         "  Good: \"Python\", \"SQL\", \"predictive modeling\", \"model deployment\", \"Salesforce\".\n"
         "  Bad:  \"At least 2 years of Data Scientist experience.\", \"Strong Python and SQL skills.\"\n"
@@ -380,6 +389,66 @@ def build_jd_signals_prompts(jd_text: str) -> Tuple[str, str]:
         "- Keep each list under 12 entries; prefer the most discriminating ones."
     )
     user_prompt = f"Extract ranking signals from this job description:\n\n{jd_text}"
+    return system_prompt, user_prompt
+
+
+def build_structure_plan_prompts(
+    jd_signals: Dict[str, Any],
+    roles: List[Dict[str, Any]],
+    project_pool: List[str],
+) -> Tuple[str, str]:
+    """Decide how much page space each role and section earns for this JD.
+
+    Everything else in the pipeline tailors wording; the resume's *shape* was fixed
+    (same bullet counts, same section order, every posting). This picks the shape.
+    The model only proposes — allowed counts are clamped in code to what each
+    evidence file can actually support, so it can never invent depth.
+    """
+    system_prompt = (
+        "You allocate limited resume space across a candidate's roles and sections for one "
+        "specific job posting. You are not writing anything — only deciding how much room "
+        "each item earns.\n\n"
+        "Return ONLY valid JSON, no markdown or commentary:\n"
+        "{\n"
+        '  "roles": {"<role_key>": <int bullets>, ...},\n'
+        '  "projects": <int>,\n'
+        '  "coursework": <int>,\n'
+        '  "projects_first": <bool>,\n'
+        '  "reasons": {"<role_key>": "<short reason>", ...}\n'
+        "}\n\n"
+        "RULES\n"
+        "- One page is the budget. Giving one role more means another gets less.\n"
+        "- For each role you may return 0 to drop it entirely, or any count within the\n"
+        "  allowed range given for that role. Nothing in between is valid.\n"
+        "- Judge each role by the evidence given for it — what_this_role_covers, keywords\n"
+        "  and tools — NOT by the company's name or how recent it is. A less famous or\n"
+        "  older role whose actual work matches the posting outranks a better-known one\n"
+        "  whose work does not.\n"
+        "- Drop a role only when its evidence genuinely does not serve this posting.\n"
+        "- Weight by what the posting screens on, not by recency or brand.\n"
+        "- projects_first: true when the posting cares more about what the candidate has\n"
+        "  built and shipped than about employment history — startup, founding, builder and\n"
+        "  applied-AI roles typically. False for corporate, research and analyst roles.\n"
+        "- Prefer depth on the one or two roles that match, over thin coverage of everything.\n"
+        "- reasons: one short clause per role explaining the count. This is shown to the "
+        "candidate, so be concrete about the posting, not generic.\n"
+        "- total_bullet_budget is BINDING and is deliberately less than the sum of every\n"
+        "  role's maximum. You cannot give every role its maximum. Decide what this posting\n"
+        "  actually screens on, spend there, and take the space from somewhere else — either\n"
+        "  run the weaker roles at their minimum, or drop one to 0 so a strong role stays deep.\n"
+        "  Returning the same allocation you would give any other posting means you have not\n"
+        "  done the task."
+    )
+    user_prompt = json.dumps(
+        {
+            "job_signals": jd_signals,
+            "roles": roles,
+            "academic_project_pool": project_pool,
+            "coursework_slots": {"min": 3, "max": 5},
+            "project_slots": {"min": 2, "max": 4},
+        },
+        ensure_ascii=True,
+    )
     return system_prompt, user_prompt
 
 

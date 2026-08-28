@@ -30,6 +30,7 @@ from main_code.workflow_prompts import (
     build_bullet_shorten_prompts,
     build_jd_signals_prompts,
     build_skills_selection_prompts,
+    build_structure_plan_prompts,
     build_course_selection_prompts,
     build_jd_summary_prompts,
 )
@@ -97,6 +98,7 @@ LLM_TASK_COURSE_SELECTION = "course_selection"
 LLM_TASK_ACADEMIC_SELECTION = "academic_selection"
 LLM_TASK_SKILLS_SELECTION = "skills_selection"
 LLM_TASK_BULLET_SHORTEN = "bullet_shorten"
+LLM_TASK_STRUCTURE_PLAN = "structure_plan"
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 
@@ -128,6 +130,10 @@ DEFAULT_TASK_LLM_SETTINGS: Dict[str, Dict[str, Any]] = {
         "temperature": 0.0,
     },
     LLM_TASK_ACADEMIC_SELECTION: {
+        "model": DEFAULT_NON_BULLET_MODEL,
+        "temperature": 0.0,
+    },
+    LLM_TASK_STRUCTURE_PLAN: {
         "model": DEFAULT_NON_BULLET_MODEL,
         "temperature": 0.0,
     },
@@ -1127,6 +1133,7 @@ def run_all(
     generation_mode: Literal["single_prompt", "sequential"] = DEFAULT_GENERATION_MODE,
     jd_summary_text: str | None = None,
     seniority: str = "",
+    role_bullets: Dict[str, int] | None = None,
 ) -> Dict[str, List[str]]:
     if jd_summary_text is None:
         raw_jd_text = read_jd(jd_path)
@@ -1146,6 +1153,15 @@ def run_all(
     company_data: List[Dict[str, Any]] = []
     for project_file in project_files:
         company, min_b, max_b = parse_filename(project_file)
+        # A structure plan pins each role to an exact count, and 0 drops it from the
+        # resume entirely. Without a plan the filename range stands, which is the
+        # original behaviour.
+        if role_bullets is not None:
+            planned = role_bullets.get(company, max_b)
+            if planned <= 0:
+                print(f"[info] Skipping {company} (structure plan)", file=sys.stderr)
+                continue
+            min_b = max_b = planned
         projects = read_projects(project_file)
         company_data.append({
             "company": company,
@@ -1159,6 +1175,32 @@ def run_all(
             file=sys.stderr,
         )
 
+    if not company_data:
+        raise ValueError("Structure plan dropped every role; nothing left to generate.")
+
+    def _enforce_counts(results: Dict[str, List[str]]) -> Dict[str, List[str]]:
+        """Trim each role to the count it was allocated.
+
+        validate_bullets() only *checks* the count: when the repair round still comes
+        back long, generate_bullets() warns and returns the oversized list anyway. That
+        made the plan advisory — one run reported "mta 2, swat 4" in the build report
+        while the PDF actually carried mta 3 and swat 5. Same rule as the skills
+        whitelist: the model proposes, code decides what ships.
+        """
+        caps = {c["company"]: c["max_bullets"] for c in company_data}
+        trimmed: Dict[str, List[str]] = {}
+        for company, bullets in results.items():
+            cap = caps.get(company)
+            if cap is not None and len(bullets) > cap:
+                print(
+                    f"[info] {company}: trimming {len(bullets)} bullets to the "
+                    f"allocated {cap}",
+                    file=sys.stderr,
+                )
+                bullets = bullets[:cap]
+            trimmed[company] = bullets
+        return trimmed
+
     if generation_mode == "single_prompt":
         print("[info] Generation mode: single_prompt", file=sys.stderr)
         print("[info] Generating all bullets in one call ...", file=sys.stderr)
@@ -1171,13 +1213,13 @@ def run_all(
             }
             for c in company_data
         ]
-        return generate_all_bullets(
+        return _enforce_counts(generate_all_bullets(
             jd_text=jd_text,
             company_data=generate_input,
             model=model,
             log_prompts=log_prompts,
             seniority=seniority,
-        )
+        ))
 
     print("[info] Generation mode: sequential", file=sys.stderr)
     results: Dict[str, List[str]] = {}
@@ -1210,7 +1252,7 @@ def run_all(
             file=sys.stderr,
         )
 
-    return results
+    return _enforce_counts(results)
 
 
 def run_all_with_full_selection(
@@ -1223,7 +1265,7 @@ def run_all_with_full_selection(
     top_k_courses: int = DEFAULT_TOP_COURSE_COUNT,
     academic_project_file: Path | None = None,
     top_k_academic_topics: int = DEFAULT_TOP_ACADEMIC_PROJECT_COUNT,
-) -> Tuple[Dict[str, List[str]], List[str], List[str], List[Dict[str, Any]], Dict[str, Any]]:
+) -> Tuple[Dict[str, List[str]], List[str], List[str], List[Dict[str, Any]], Dict[str, Any], Dict[str, Any]]:
     raw_jd_text = read_jd(jd_path)
     project_file = academic_project_file or (directory / DEFAULT_ACADEMIC_PROJECT_FILE)
     if not project_file.exists():
@@ -1241,6 +1283,50 @@ def run_all_with_full_selection(
         jd_signals = signals_future.result()
     seniority = jd_signals.get("seniority", "")
 
+    # The plan decides the resume's shape (bullets per role, how many projects and
+    # courses, whether projects lead), so it has to settle before anything is generated
+    # or selected.
+    role_specs = []
+    for project_file in sorted(directory.glob("work_*_*-*.json")):
+        try:
+            company, min_b, max_b = parse_filename(project_file)
+        except ValueError:
+            continue
+        # Without this the planner only sees a company name and a bullet range, so it
+        # guesses from brand recognition ("likely closest to...") and keeps cutting the
+        # oldest role whatever the posting asks for. The evidence is what makes a role
+        # relevant, so it has to see it.
+        try:
+            evidence = read_projects(project_file)
+        except Exception:
+            evidence = []
+        keywords, tools, titles = [], [], []
+        for item in evidence:
+            titles.append(str(item.get("title", "")).strip())
+            keywords.extend(str(k) for k in (item.get("keywords") or []))
+            tools.extend(str(t) for t in (item.get("tools") or []))
+        role_specs.append({
+            "company": company,
+            "min_bullets": min_b,
+            "max_bullets": max_b,
+            "what_this_role_covers": [t for t in titles if t],
+            "keywords": sorted(set(keywords)),
+            "tools": sorted(set(tools)),
+        })
+    plan = plan_resume_structure(
+        jd_signals=jd_signals,
+        roles=role_specs,
+        project_pool=[
+            str(p.get("Topic", "")).strip() for p in academic_projects if p.get("Topic")
+        ],
+        model=model,
+    )
+    top_k_courses = plan["coursework"]
+    top_k_academic_topics = plan["projects"]
+    print(f"[info] Structure plan: {plan['roles']} "
+          f"projects={plan['projects']} coursework={plan['coursework']} "
+          f"projects_first={plan['projects_first']}", file=sys.stderr)
+
     with ThreadPoolExecutor(max_workers=3) as executor:
         bullets_future = executor.submit(
             run_all,
@@ -1251,6 +1337,7 @@ def run_all_with_full_selection(
             generation_mode,
             jd_summary,
             seniority,
+            plan["roles"],
         )
         courses_future = executor.submit(
             select_top_courses_for_jd,
@@ -1294,7 +1381,7 @@ def run_all_with_full_selection(
         for project in selected_projects
         if str(project.get("Topic", "")).strip()
     ]
-    return bullets, selected_courses, selected_topics, selected_projects, jd_signals
+    return bullets, selected_courses, selected_topics, selected_projects, jd_signals, plan
 
 
 def main() -> int:
@@ -1438,6 +1525,109 @@ if __name__ == "__main__":
 # JD signals + Skills selection
 # ---------------------------------------------------------------------------
 
+def plan_resume_structure(
+    jd_signals: Dict[str, Any],
+    roles: List[Dict[str, Any]],
+    project_pool: Sequence[str],
+    model: str,
+) -> Dict[str, Any]:
+    """Choose how much space each role and section gets for this posting.
+
+    Until now the shape was fixed: the same bullet counts from the filenames and the
+    same section order for every JD, so only the wording ever adapted. `archetype` was
+    extracted and then never used by anything.
+
+    Same contract as the skills whitelist — the model proposes, code constrains. Each
+    role is clamped to 0 (dropped) or its evidence file's own min..max, so a plan can
+    never ask for depth the evidence cannot support. A failed call falls back to the
+    filename maxima, i.e. exactly the old fixed behaviour.
+    """
+    bounds = {r["company"]: (r["min_bullets"], r["max_bullets"]) for r in roles}
+    fallback = {
+        "roles": {c: mx for c, (_, mx) in bounds.items()},
+        "projects": DEFAULT_TOP_ACADEMIC_PROJECT_COUNT,
+        "coursework": DEFAULT_TOP_COURSE_COUNT,
+        "projects_first": False,
+        "reasons": {},
+    }
+
+    # The budget has to bite. Setting it to the sum of the maxima made "give every
+    # role its maximum" a feasible answer, so the planner returned exactly that for
+    # every posting and the shape never changed. The sum of the minima forces a real
+    # trade: either everything runs lean, or a weak role is dropped so a strong one
+    # can stay deep.
+    budget = sum(mn for mn, _ in bounds.values())
+
+    task_model, task_temperature = get_task_llm_settings(
+        LLM_TASK_STRUCTURE_PLAN, fallback_model=model
+    )
+    allowed = [
+        {
+            "role_key": r["company"],
+            "allowed_bullets": f"0 (drop) or {r['min_bullets']}-{r['max_bullets']}",
+            "min_if_kept": r["min_bullets"],
+            "max_if_kept": r["max_bullets"],
+            "what_this_role_covers": r.get("what_this_role_covers", []),
+            "keywords": r.get("keywords", []),
+            "tools": r.get("tools", []),
+        }
+        for r in roles
+    ]
+    system_prompt, user_prompt = build_structure_plan_prompts(
+        jd_signals=jd_signals,
+        roles=allowed,
+        project_pool=list(project_pool),
+    )
+    try:
+        raw = call_llm(
+            model=task_model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": user_prompt + f"\n\ntotal_bullet_budget: {budget}",
+                },
+            ],
+            temperature=task_temperature,
+            max_tokens=1200,
+        )
+        proposed = json.loads(_strip_fence(raw))
+        if not isinstance(proposed, dict):
+            return fallback
+    except Exception as exc:
+        print(f"[warning] structure planner failed, using full evidence: {exc}", file=sys.stderr)
+        return fallback
+
+    # Clamp: 0, or inside the evidence file's declared range. Nothing else is legal.
+    planned_roles: Dict[str, int] = {}
+    raw_roles = proposed.get("roles") or {}
+    for company, (mn, mx) in bounds.items():
+        want = raw_roles.get(company, mx)
+        try:
+            want = int(want)
+        except (TypeError, ValueError):
+            want = mx
+        planned_roles[company] = 0 if want <= 0 else max(mn, min(mx, want))
+
+    # Refuse to empty the resume, however the model scored things.
+    if not any(planned_roles.values()):
+        planned_roles = {c: mx for c, (_, mx) in bounds.items()}
+
+    def _clamp(key: str, lo: int, hi: int, default: int) -> int:
+        try:
+            return max(lo, min(hi, int(proposed.get(key, default))))
+        except (TypeError, ValueError):
+            return default
+
+    return {
+        "roles": planned_roles,
+        "projects": _clamp("projects", 2, 4, DEFAULT_TOP_ACADEMIC_PROJECT_COUNT),
+        "coursework": _clamp("coursework", 3, 5, DEFAULT_TOP_COURSE_COUNT),
+        "projects_first": bool(proposed.get("projects_first", False)),
+        "reasons": proposed.get("reasons") or {},
+    }
+
+
 def extract_jd_signals(jd_text: str, model: str) -> Dict[str, Any]:
     """Structured ranking signals from a JD.
 
@@ -1451,6 +1641,7 @@ def extract_jd_signals(jd_text: str, model: str) -> Dict[str, Any]:
         "domain": "",
         "must_have": [],
         "nice_to_have": [],
+        "credentials": [],
         "top_3_screens": [],
     }
     task_model, task_temperature = get_task_llm_settings(
