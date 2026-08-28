@@ -346,6 +346,44 @@ def replace_academic_projects(
     return tex_content[:start_idx] + new_section + tex_content[end_idx:]
 
 
+def drop_experience_entries(tex_content: str, drop_keys: List[str]) -> str:
+    """Remove whole Experience entries for roles the structure plan dropped.
+
+    replace_experience_bullets() only rewrites companies it is handed, so a dropped
+    role silently kept the template's original placeholder bullets: the build report
+    said "dropped shopee" while the PDF still carried Shopee with untailored text.
+    Skipping generation is not the same as removing the entry, so remove it here.
+    """
+    if not drop_keys:
+        return tex_content
+
+    start = tex_content.find(r"\section{Experience}")
+    if start == -1:
+        return tex_content
+    rest = tex_content.find(r"\section{", start + 1)
+    end = rest if rest != -1 else len(tex_content)
+
+    section = tex_content[start:end]
+    # Each entry runs from its bold company heading to just before the next one.
+    heads = [m.start() for m in re.finditer(r"\\noindent \\textbf\{", section)]
+    if not heads:
+        return tex_content
+
+    keep: List[str] = []
+    cursor = 0
+    for i, head in enumerate(heads):
+        stop = heads[i + 1] if i + 1 < len(heads) else len(section)
+        entry = section[head:stop]
+        name_match = re.search(r"\\textbf\{([^}]+)\}", entry)
+        key = _match_company_key(name_match.group(1), drop_keys) if name_match else None
+        if key in drop_keys:
+            keep.append(section[cursor:head])
+            cursor = stop
+    keep.append(section[cursor:])
+
+    return tex_content[:start] + "".join(keep) + tex_content[end:]
+
+
 def _plan_note(plan: Dict[str, Any]) -> str:
     """One-line summary of how the page budget was allocated."""
     roles = plan.get("roles") or {}
@@ -747,6 +785,9 @@ def build_resume(
 
     # 3. Read template and replace bullets/coursework/academic projects/skills
     tex_content = template_path.read_text(encoding="utf-8")
+    tex_content = drop_experience_entries(
+        tex_content, [c for c, n in (plan.get("roles") or {}).items() if not n]
+    )
     new_tex = replace_experience_bullets(tex_content, bullets)
     new_tex = replace_columbia_coursework(new_tex, selected_courses)
     new_tex = replace_academic_projects(new_tex, selected_academic_projects)

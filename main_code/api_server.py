@@ -35,6 +35,7 @@ from main_code.build_resume import (
     replace_columbia_coursework,
     replace_experience_bullets,
     _plan_note,
+    drop_experience_entries,
     replace_skills,
     reorder_sections,
     slugify,
@@ -275,6 +276,9 @@ def compile_resume(req: CompileRequest):
 
     try:
         tex_content = template_path.read_text(encoding="utf-8")
+        tex_content = drop_experience_entries(
+            tex_content, [c for c, n in (req.plan.get("roles") or {}).items() if not n]
+        )
         new_tex = replace_experience_bullets(tex_content, req.bullets)
 
         academic_file = DATA_DIR / DEFAULT_ACADEMIC_PROJECT_FILE
