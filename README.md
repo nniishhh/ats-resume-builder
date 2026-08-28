@@ -11,34 +11,45 @@ Hosted on Google Cloud Run; every push to `main` auto-deploys via Cloud Build.
 ### Workflow Overview
 
 1. **JD Signal Extraction** → An LLM cleans the job description down to ranking signals (skills, responsibilities, domain, constraints).
-2. **Parallel Tailoring** → From those signals, three tasks run at the same time:
+2. **Parallel Tailoring** → From those signals, four tasks run at the same time:
    - **Bullet generation** for each work experience, grounded in project evidence.
    - **Columbia coursework selection** — picks the most JD-relevant courses.
    - **Academic project selection** — picks the most JD-relevant projects.
-3. **Validation & Repair** → Generated bullets are checked in code (length, count, unique verbs) and repaired once if any check fails.
-4. **Template Injection** → Bullets, coursework, and academic projects are injected into the LaTeX template (`main.tex`).
-5. **PDF Compilation** → Compiled to a professional PDF via `xelatex`/`tectonic`.
+   - **Skills selection** — picks only from `data/skills_inventory.json`, a whitelist where every entry carries an evidence pointer; anything the model returns outside it is dropped and logged.
+3. **Validation & Repair** → Generated bullets are checked in code (length, count, unique verbs, numeric claims present in evidence) and repaired once if any check fails.
+4. **Template Injection** → Bullets, coursework, academic projects, and skills are injected into the LaTeX template (`main.tex`).
+5. **Compile & Fit to One Page** → Compiled via `xelatex`/`tectonic`; if it runs over a page, a spacing ladder tightens entry/section spacing and margins, then drops the least-relevant bullet, recompiling after each step until it fits.
+6. **Polish** → De-duplicates starting verbs across the whole document (including static academic-project bullets) and repairs orphan lines — a bullet that leaves one or two words alone on its last line — first with meaning-preserving contractions, then a verified LLM rewrite if still needed.
+7. **Build Report** → A deterministic report (page count, orphan lines, verb repeats, grounding, skills, JD keyword coverage) is rendered to the CLI/UI.
 
 ### Architecture
 
 ```mermaid
 flowchart LR
-    JD["JD"] --> SUM["JD Signals"]
-    SUM --> GEN["Bullets"] & CRS["Coursework"] & ACA["Academic Projects"]
-    GEN --> VAL{"Validate<br/>len · count · verbs"}
+    JD["JD"] --> SUM["JD Summary"] --> SIG["JD Signals"]
+    SIG --> GEN["Bullets"] & CRS["Coursework"] & ACA["Academic<br/>Projects"] & SKL["Skills<br/>(whitelist only)"]
+    GEN --> VAL{"Validate<br/>len · count · verbs · grounding"}
     VAL -->|"fix"| REP["Repair ×1"] --> VAL
     VAL -->|"ok"| TEX["main.tex"]
     CRS --> TEX
     ACA --> TEX
-    TEX --> PDF["PDF"]
+    SKL --> TEX
+    TEX --> PDF1["Compile PDF"]
+    PDF1 --> FIT{"Fits one<br/>page?"}
+    FIT -->|"no"| TRIM["Tighten spacing →<br/>drop weakest bullet"] --> PDF1
+    FIT -->|"yes"| POL["Polish:<br/>dedupe verbs · fix orphans"]
+    POL --> QA["Build Report"]
+    QA --> OUT(["PDF + Report"])
 
     classDef llm fill:#dbeafe,stroke:#2563eb,color:#1e3a8a;
     classDef code fill:#dcfce7,stroke:#16a34a,color:#14532d;
-    class SUM,GEN,CRS,ACA,REP llm
-    class VAL,TEX,PDF code
+    classDef out fill:#fef3c7,stroke:#d97706,color:#78350f;
+    class SUM,SIG,GEN,CRS,ACA,SKL,REP llm
+    class VAL,TEX,PDF1,FIT,TRIM,POL,QA code
+    class OUT out
 ```
 
-> Blue = LLM · Green = code. `Bullets`, `Coursework`, and `Academic Projects` run in parallel from the JD signals; bullets loop through one validate → repair round before assembly.
+> Blue = LLM call · Green = deterministic code · Amber = output. `Bullets`, `Coursework`, `Academic Projects`, and `Skills` run in parallel from the JD signals; bullets loop through one validate → repair round before assembly. Fit-to-one-page and polish each recompile the PDF after every change, since fixing one thing can reflow the page and create another.
 
 ### Key Features
 
