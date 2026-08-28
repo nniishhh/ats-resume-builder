@@ -28,7 +28,6 @@ from main_code.workflow_prompts import (
     build_bullet_generation_user_prompt,
     build_bullet_repair_payload,
     build_bullet_shorten_prompts,
-    build_company_descriptor_prompts,
     build_jd_signals_prompts,
     build_skills_selection_prompts,
     build_course_selection_prompts,
@@ -96,6 +95,8 @@ LLM_TASK_BULLET_REPAIR = "bullet_repair"
 LLM_TASK_BULLETS_ALL = "bullets_all"
 LLM_TASK_COURSE_SELECTION = "course_selection"
 LLM_TASK_ACADEMIC_SELECTION = "academic_selection"
+LLM_TASK_SKILLS_SELECTION = "skills_selection"
+LLM_TASK_BULLET_SHORTEN = "bullet_shorten"
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 
@@ -108,8 +109,6 @@ def _strip_fence(raw: str) -> str:
     return cleaned.strip()
 
 
-LLM_TASK_SKILLS_SELECTION = "skills_selection"
-LLM_TASK_COMPANY_DESCRIPTOR = "company_descriptor"
 DEFAULT_TASK_LLM_SETTINGS: Dict[str, Dict[str, Any]] = {
     LLM_TASK_JD_SIGNALS: {
         "model": DEFAULT_NON_BULLET_MODEL,
@@ -1214,39 +1213,6 @@ def run_all(
     return results
 
 
-def run_all_with_course_selection(
-    jd_path: Path,
-    directory: Path,
-    model: str,
-    log_prompts: bool,
-    generation_mode: Literal["single_prompt", "sequential"] = DEFAULT_GENERATION_MODE,
-    courses: Sequence[str] | None = None,
-    top_k: int = DEFAULT_TOP_COURSE_COUNT,
-) -> Tuple[Dict[str, List[str]], List[str]]:
-    raw_jd_text = read_jd(jd_path)
-    jd_summary = summarize_job_description(jd_text=raw_jd_text, model=model)
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        bullets_future = executor.submit(
-            run_all,
-            jd_path,
-            directory,
-            model,
-            log_prompts,
-            generation_mode,
-            jd_summary,
-        )
-        courses_future = executor.submit(
-            select_top_courses_for_jd,
-            jd_summary,
-            model,
-            courses,
-            top_k,
-        )
-        bullets = bullets_future.result()
-        selected_courses = courses_future.result()
-    return bullets, selected_courses
-
-
 def run_all_with_full_selection(
     jd_path: Path,
     directory: Path,
@@ -1603,8 +1569,6 @@ def _fallback_skills(inventory: Dict[str, Any], max_per_category: int) -> List[D
         for c in inventory.get("categories", [])
     ]
 
-
-LLM_TASK_BULLET_SHORTEN = "bullet_shorten"
 
 
 def shorten_bullet_llm(

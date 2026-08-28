@@ -1,6 +1,119 @@
 import json
 from typing import Any, Dict, List, Sequence, Tuple
 
+# Shared by every bullet-generation payload. Kept as one constant because the
+# sequential and single_prompt paths, plus both of their repair rounds, all send
+# the same rules — four hand-synced copies is how they drift apart.
+LEXICAL_DIVERSITY_RULES = [
+    "Avoid repeating the same connector or phrasing across bullets.",
+    "Ensure lexical variety in verbs, connectors, and clause structure.",
+    "Do NOT repeat the same tool in every bullet when context is already clear.",
+    "After an initial explicit mention, tools may be abstracted into system-level phrasing.",
+    "Reintroduce a tool only when it adds meaningful technical clarity or differentiation.",
+]
+
+
+def _bullet_system_prompt(
+    min_bullet_chars: int,
+    max_bullet_chars: int,
+    output_contract: str,
+    ordering_line: str,
+    repetition_scope: str,
+) -> str:
+    """Shared system prompt for both generation modes.
+
+    The two modes are identical apart from their output contract (numbered list vs
+    JSON object) and whether ordering/repetition is scoped per company. Everything
+    else — truthfulness, no-inflation, evidence handling, jargon calibration — must
+    stay the same in both, so it lives here once instead of in two copies that have
+    to be edited in lockstep.
+    """
+    return f"""You write concise, ATS-optimized resume bullets grounded strictly in the provided project evidence and job description.
+
+========================================
+OUTPUT CONTRACT (NON-NEGOTIABLE)
+========================================
+{output_contract}
+
+========================================
+HARD LENGTH RULE (NON-NEGOTIABLE)
+========================================
+- Every bullet MUST satisfy this exact condition:
+      {min_bullet_chars} <= len(bullet) <= {max_bullet_chars}
+- len(bullet) is Python's character count of the bullet string, including spaces.
+- If the condition is False for any bullet, that bullet is invalid and must be rewritten.
+
+========================================
+TRUTHFULNESS
+========================================
+- Do NOT invent metrics, tools, scope, stakeholders, or outcomes.
+- Every statement must be logically supported by the evidence.
+- You may paraphrase and reframe, but never fabricate.
+
+========================================
+ADAPTIVE FRAMING RULE
+========================================
+Let the job description determine what to emphasize and how to structure bullets.
+- If the JD emphasizes ownership, strategy, prioritization, or cross-functional delivery, structure bullets to highlight leadership, decisions, and business outcomes.
+- If the JD emphasizes technical execution, analytics, or modeling, structure bullets to highlight methods, systems, and measurable impact.
+Choose the most appropriate framing without adding unsupported details.
+
+========================================
+NO INFLATION
+========================================
+Describe the work at the level the evidence describes it.
+- Do NOT add a category of work that is not in the evidence (e.g. calling optimization work "predictive").
+- Do NOT promote a technique into a broader family to match the JD (e.g. clustering -> "machine learning" if the evidence says clustering).
+- Generic system nouns ("pipeline", "system", "framework") are fine when the evidence describes a built artifact.
+
+========================================
+EVIDENCE FIELD GUIDE
+========================================
+- "example_bullets" are human-proofread, trusted references: treat their claims and phrasing as authoritative.
+- "harvested_bullets" are additional strong variants: use them for phrasing inspiration, same trust as other evidence.
+- Some "results" entries include "(framing variants: ...)": these are alternative truthful phrasings of the SAME metric. Pick exactly ONE framing per metric based on JD fit; never combine variants or state the metric twice.
+- "keywords" are ATS vocabulary hints, not facts; weave them in only where the evidence supports them.
+
+========================================
+JOB DESCRIPTION ALIGNMENT
+========================================
+- Use the JD to guide emphasis and terminology.
+- Prefer JD-aligned language only when it fits the evidence.
+- Do NOT force keywords that are not logically connected to the work.
+
+========================================
+BULLET ORDERING
+========================================
+- {ordering_line}
+- If relevance is similar, order by measurable impact and scale.
+
+========================================
+STYLE PRINCIPLES
+========================================
+- Prefer concrete nouns and outcomes over vague corporate phrasing.
+- Use strong, varied action verbs.
+- When a bullet includes a numeric or measurable result, you should place that result at the end of the sentence.
+- Avoid repetition{repetition_scope}.
+
+========================================
+READER-CALIBRATED JARGON
+========================================
+Match technical density to "target_seniority" in the user payload. This never changes what
+happened, what tools were used, or what the result was — only how technically dense the
+phrasing is.
+- "intern" / "junior": Favor plain, concrete language a generalist hiring manager can follow
+  at a glance. Name tools directly (SQL, Python, Tableau) but avoid compressed technical
+  shorthand (e.g. "agglomerative clustering", "MILP", "record-linkage workflow") unless the
+  JD itself uses that exact term — describe the mechanism in plain words instead.
+- "mid" or unset: Balance plain language with domain terminology where it is precise.
+- "senior": Full technical density is expected — precise method, algorithm, and systems
+  terminology is rewarded, not a liability.
+
+========================================
+LEXICAL DIVERSITY RULE
+========================================
+""" + "\n".join(f"- {rule}" for rule in LEXICAL_DIVERSITY_RULES)
+
 
 def build_jd_summary_prompts(jd_text: str) -> Tuple[str, str]:
     system_prompt = (
@@ -66,97 +179,17 @@ def build_bullet_generation_system_prompt(
     min_bullet_chars: int,
     max_bullet_chars: int,
 ) -> str:
-    return f"""You write concise, ATS-optimized resume bullets grounded strictly in the provided project evidence and job description.
-
-========================================
-OUTPUT CONTRACT (NON-NEGOTIABLE)
-========================================
-- Return ONLY a numbered list.
-- No markdown, commentary, explanations, or code fences.
-- Format: "1. First bullet\\n2. Second bullet"
-
-========================================
-HARD LENGTH RULE (NON-NEGOTIABLE)
-========================================
-- Every bullet MUST satisfy this exact condition:
-      {min_bullet_chars} <= len(bullet) <= {max_bullet_chars}
-- len(bullet) is Python's character count of the bullet string, including spaces.
-- If the condition is False for any bullet, that bullet is invalid and must be rewritten.
-
-========================================
-TRUTHFULNESS
-========================================
-- Do NOT invent metrics, tools, scope, stakeholders, or outcomes.
-- Every statement must be logically supported by the evidence.
-- You may paraphrase and reframe, but never fabricate.
-
-========================================
-ADAPTIVE FRAMING RULE
-========================================
-Let the job description determine what to emphasize and how to structure bullets.
-- If the JD emphasizes ownership, strategy, prioritization, or cross-functional delivery, structure bullets to highlight leadership, decisions, and business outcomes.
-- If the JD emphasizes technical execution, analytics, or modeling, structure bullets to highlight methods, systems, and measurable impact.
-Choose the most appropriate framing without adding unsupported details.
-
-========================================
-NO INFLATION
-========================================
-Describe the work at the level the evidence describes it.
-- Do NOT add a category of work that is not in the evidence (e.g. calling optimization work "predictive").
-- Do NOT promote a technique into a broader family to match the JD (e.g. clustering -> "machine learning" if the evidence says clustering).
-- Generic system nouns ("pipeline", "system", "framework") are fine when the evidence describes a built artifact.
-
-========================================
-EVIDENCE FIELD GUIDE
-========================================
-- "example_bullets" are human-proofread, trusted references: treat their claims and phrasing as authoritative.
-- "harvested_bullets" are additional strong variants: use them for phrasing inspiration, same trust as other evidence.
-- Some "results" entries include "(framing variants: ...)": these are alternative truthful phrasings of the SAME metric. Pick exactly ONE framing per metric based on JD fit; never combine variants or state the metric twice.
-- "keywords" are ATS vocabulary hints, not facts; weave them in only where the evidence supports them.
-
-========================================
-JOB DESCRIPTION ALIGNMENT
-========================================
-- Use the JD to guide emphasis and terminology.
-- Prefer JD-aligned language only when it fits the evidence.
-- Do NOT force keywords that are not logically connected to the work.
-
-========================================
-BULLET ORDERING
-========================================
-- Order bullets by strongest alignment to the JD.
-- If relevance is similar, order by measurable impact and scale.
-
-========================================
-STYLE PRINCIPLES
-========================================
-- Prefer concrete nouns and outcomes over vague corporate phrasing.
-- Use strong, varied action verbs.
-- When a bullet includes a numeric or measurable result, you should place that result at the end of the sentence.
-- Avoid repetition.
-
-========================================
-READER-CALIBRATED JARGON
-========================================
-Match technical density to "target_seniority" in the user payload. This never changes what
-happened, what tools were used, or what the result was — only how technically dense the
-phrasing is.
-- "intern" / "junior": Favor plain, concrete language a generalist hiring manager can follow
-  at a glance. Name tools directly (SQL, Python, Tableau) but avoid compressed technical
-  shorthand (e.g. "agglomerative clustering", "MILP", "record-linkage workflow") unless the
-  JD itself uses that exact term — describe the mechanism in plain words instead.
-- "mid" or unset: Balance plain language with domain terminology where it is precise.
-- "senior": Full technical density is expected — precise method, algorithm, and systems
-  terminology is rewarded, not a liability.
-
-========================================
-LEXICAL DIVERSITY RULE
-========================================
-- Avoid repeating the same connector or phrasing across bullets.
-- Ensure lexical variety in verbs, connectors, and clause structure.
-- Do NOT repeat the same tool in every bullet when context is already clear.
-- After an initial explicit mention, tools may be abstracted into system-level phrasing.
-- Reintroduce a tool only when it adds meaningful technical clarity or differentiation."""
+    return _bullet_system_prompt(
+        min_bullet_chars=min_bullet_chars,
+        max_bullet_chars=max_bullet_chars,
+        output_contract=(
+            "- Return ONLY a numbered list.\n"
+            "- No markdown, commentary, explanations, or code fences.\n"
+            '- Format: "1. First bullet\\n2. Second bullet"'
+        ),
+        ordering_line="Order bullets by strongest alignment to the JD.",
+        repetition_scope="",
+    )
 
 
 def build_bullet_generation_user_prompt(
@@ -177,13 +210,7 @@ def build_bullet_generation_user_prompt(
         "target_seniority": seniority or "mid",
         "project_evidence": projects,
         "already_used_verbs": used_verbs or [],
-        "lexical_diversity_rules": [
-            "Avoid repeating the same connector or phrasing across bullets.",
-            "Ensure lexical variety in verbs, connectors, and clause structure.",
-            "Do NOT repeat the same tool in every bullet when context is already clear.",
-            "After an initial explicit mention, tools may be abstracted into system-level phrasing.",
-            "Reintroduce a tool only when it adds meaningful technical clarity or differentiation.",
-        ],
+        "lexical_diversity_rules": LEXICAL_DIVERSITY_RULES,
     }
 
 
@@ -223,13 +250,7 @@ def build_bullet_repair_payload(
         "target_seniority": seniority or "mid",
         "already_used_verbs": used_verbs or [],
         "project_evidence": projects,
-        "lexical_diversity_rules": [
-            "Avoid repeating the same connector or phrasing across bullets.",
-            "Ensure lexical variety in verbs, connectors, and clause structure.",
-            "Do NOT repeat the same tool in every bullet when context is already clear.",
-            "After an initial explicit mention, tools may be abstracted into system-level phrasing.",
-            "Reintroduce a tool only when it adds meaningful technical clarity or differentiation.",
-        ],
+        "lexical_diversity_rules": LEXICAL_DIVERSITY_RULES,
         "output_rule": "Numbered list only. No explanations.",
     }
 
@@ -238,103 +259,22 @@ def build_all_bullets_system_prompt(
     min_bullet_chars: int,
     max_bullet_chars: int,
 ) -> str:
-    return f"""You write concise, ATS-optimized resume bullets grounded strictly in the provided project evidence and job description.
-
-========================================
-OUTPUT CONTRACT (NON-NEGOTIABLE)
-========================================
-- Return ONLY valid JSON.
-- No markdown, commentary, explanations, or code fences.
-- JSON must be a single object:
-  - Keys = company names (strings)
-  - Values = arrays of bullet strings
-
-Example:
-{{"Company A": ["bullet 1", "bullet 2"]}}
-
-
-========================================
-HARD LENGTH RULE (NON-NEGOTIABLE)
-========================================
-- Every bullet MUST satisfy this exact condition:
-      {min_bullet_chars} <= len(bullet) <= {max_bullet_chars}
-- len(bullet) is Python's character count of the bullet string, including spaces.
-- If the condition is False for any bullet, that bullet is invalid and must be rewritten.
-
-========================================
-TRUTHFULNESS
-========================================
-- Do NOT invent metrics, tools, scope, stakeholders, or outcomes.
-- Every statement must be logically supported by the evidence.
-- You may paraphrase and reframe, but never fabricate.
-
-========================================
-ADAPTIVE FRAMING RULE
-========================================
-Let the job description determine what to emphasize and how to structure bullets.
-- If the JD emphasizes ownership, strategy, prioritization, or cross-functional delivery, structure bullets to highlight leadership, decisions, and business outcomes.
-- If the JD emphasizes technical execution, analytics, or modeling, structure bullets to highlight methods, systems, and measurable impact.
-Choose the most appropriate framing without adding unsupported details.
-
-========================================
-NO INFLATION
-========================================
-Describe the work at the level the evidence describes it.
-- Do NOT add a category of work that is not in the evidence (e.g. calling optimization work "predictive").
-- Do NOT promote a technique into a broader family to match the JD (e.g. clustering -> "machine learning" if the evidence says clustering).
-- Generic system nouns ("pipeline", "system", "framework") are fine when the evidence describes a built artifact.
-
-========================================
-EVIDENCE FIELD GUIDE
-========================================
-- "example_bullets" are human-proofread, trusted references: treat their claims and phrasing as authoritative.
-- "harvested_bullets" are additional strong variants: use them for phrasing inspiration, same trust as other evidence.
-- Some "results" entries include "(framing variants: ...)": these are alternative truthful phrasings of the SAME metric. Pick exactly ONE framing per metric based on JD fit; never combine variants or state the metric twice.
-- "keywords" are ATS vocabulary hints, not facts; weave them in only where the evidence supports them.
-
-========================================
-JOB DESCRIPTION ALIGNMENT
-========================================
-- Use the JD to guide emphasis and terminology.
-- Prefer JD-aligned language only when it fits the evidence.
-- Do NOT force keywords that are not logically connected to the work.
-
-========================================
-BULLET ORDERING
-========================================
-- Within each company, order bullets by strongest alignment to the JD.
-- If relevance is similar, order by measurable impact and scale.
-
-========================================
-STYLE PRINCIPLES
-========================================
-- Prefer concrete nouns and outcomes over vague corporate phrasing.
-- Use strong, varied action verbs.
-- When a bullet includes a numeric or measurable result, you should place that result at the end of the sentence.
-- Avoid repetition within each company.
-
-========================================
-READER-CALIBRATED JARGON
-========================================
-Match technical density to "target_seniority" in the user payload. This never changes what
-happened, what tools were used, or what the result was — only how technically dense the
-phrasing is.
-- "intern" / "junior": Favor plain, concrete language a generalist hiring manager can follow
-  at a glance. Name tools directly (SQL, Python, Tableau) but avoid compressed technical
-  shorthand (e.g. "agglomerative clustering", "MILP", "record-linkage workflow") unless the
-  JD itself uses that exact term — describe the mechanism in plain words instead.
-- "mid" or unset: Balance plain language with domain terminology where it is precise.
-- "senior": Full technical density is expected — precise method, algorithm, and systems
-  terminology is rewarded, not a liability.
-
-========================================
-LEXICAL DIVERSITY RULE
-========================================
-- Avoid repeating the same connector or phrasing across bullets.
-- Ensure lexical variety in verbs, connectors, and clause structure.
-- Do NOT repeat the same tool in every bullet when context is already clear.
-- After an initial explicit mention, tools may be abstracted into system-level phrasing.
-- Reintroduce a tool only when it adds meaningful technical clarity or differentiation."""
+    return _bullet_system_prompt(
+        min_bullet_chars=min_bullet_chars,
+        max_bullet_chars=max_bullet_chars,
+        output_contract=(
+            "- Return ONLY valid JSON.\n"
+            "- No markdown, commentary, explanations, or code fences.\n"
+            "- JSON must be a single object:\n"
+            "  - Keys = company names (strings)\n"
+            "  - Values = arrays of bullet strings\n"
+            "\n"
+            "Example:\n"
+            '{"Company A": ["bullet 1", "bullet 2"]}\n'
+        ),
+        ordering_line="Within each company, order bullets by strongest alignment to the JD.",
+        repetition_scope=" within each company",
+    )
 
 
 def build_all_bullets_user_prompt(
@@ -347,13 +287,7 @@ def build_all_bullets_user_prompt(
         "job_description_summary": jd_text,
         "target_seniority": seniority or "mid",
         "companies": companies_spec,
-        "lexical_diversity_rules": [
-            "Avoid repeating the same connector or phrasing across bullets.",
-            "Ensure lexical variety in verbs, connectors, and clause structure.",
-            "Do NOT repeat the same tool in every bullet when context is already clear.",
-            "After an initial explicit mention, tools may be abstracted into system-level phrasing.",
-            "Reintroduce a tool only when it adds meaningful technical clarity or differentiation.",
-        ],
+        "lexical_diversity_rules": LEXICAL_DIVERSITY_RULES,
     }
 
 
@@ -487,29 +421,6 @@ def build_skills_selection_prompts(
     return system_prompt, user_prompt
 
 
-def build_company_descriptor_prompts(
-    jd_signals: Dict[str, Any],
-    descriptor_options: Dict[str, List[str]],
-) -> Tuple[str, str]:
-    """Pick a company descriptor per employer from pre-written options.
-
-    Descriptors carry scale ("Southeast Asia's Largest E-Commerce Platform; Sea Group") rather
-    than category ("E-commerce Platform"), and which framing lands depends on the reader. These
-    are written by hand and only selected here, so the model can never invent a headcount,
-    funding stage, or revenue figure.
-    """
-    system_prompt = (
-        "Select the best company descriptor for each employer, given the job description signals.\n\n"
-        "- Choose ONLY from the provided options for each company. Return them verbatim.\n"
-        "- Never write your own descriptor and never invent financials, headcount, or funding.\n"
-        "- Prefer the framing that matters most to this reader: scale for corporate roles,\n"
-        "  domain for specialist roles, startup breadth for small-team roles.\n\n"
-        'Return ONLY valid JSON: {"<company>": "<chosen option verbatim>"}'
-    )
-    user_prompt = json.dumps(
-        {"job_signals": jd_signals, "options": descriptor_options}, ensure_ascii=True
-    )
-    return system_prompt, user_prompt
 
 
 def build_bullet_shorten_prompts(

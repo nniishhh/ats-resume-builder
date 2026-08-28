@@ -12,7 +12,7 @@ import os
 import sys
 import base64
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
@@ -57,9 +57,6 @@ from main_code.resume_bullet_workflow import (
     run_all_with_full_selection,
     select_academic_projects_by_topics,
     select_skills_for_jd,
-    select_top_academic_topics_for_jd,
-    select_top_courses_for_jd,
-    summarize_job_description,
 )
 
 WORK_DIR = Path(os.getenv("RESUME_WORK_DIR", ".")).resolve()
