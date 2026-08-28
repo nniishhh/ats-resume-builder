@@ -93,7 +93,10 @@ button, input, select, textarea { font-family: inherit; }
   flex: 1 1 auto;
   min-width: 0;
   padding: 48px 56px 140px;
-  max-width: 940px;
+  /* Centred in the space left of the sidebar. Left-aligning it stranded ~440px
+     of empty page on a 1600px screen. */
+  max-width: calc(940px + 112px);
+  margin-inline: auto;
 }
 
 /* ── Type utilities ────────────────────────────────────────────────────── */
@@ -573,8 +576,8 @@ button, input, select, textarea { font-family: inherit; }
   -webkit-backdrop-filter: blur(12px);
   border-top: 1px solid var(--hair);
   box-shadow: var(--shadow-bar);
-  padding: 14px 56px 14px calc(272px + 56px);
-  display: flex; align-items: center; gap: 20px;
+  padding: 14px 0 14px 272px; /* clear the sidebar; inner div matches .main */
+  display: flex;
   transform: translateY(101%);
   /* visibility, not transform alone — an off-screen bar is still tabbable, which
      drops keyboard users onto buttons they cannot see. */
@@ -582,6 +585,13 @@ button, input, select, textarea { font-family: inherit; }
   transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), visibility 0.28s;
 }
 .actionBar[data-show="true"] { transform: translateY(0); visibility: visible; }
+.actionBarInner {
+  width: 100%;
+  max-width: calc(940px + 112px);
+  margin-inline: auto;
+  padding: 0 56px;
+  display: flex; align-items: center; gap: 20px;
+}
 .actionBar .summary {
   font: 300 13.5px/1.4 var(--font-text);
   color: var(--text-2);
@@ -629,7 +639,8 @@ button, input, select, textarea { font-family: inherit; }
   .main { padding: 28px 22px 132px; max-width: none; }
   .row2 { grid-template-columns: 1fr; }
   .cardHead, .cardBody { padding-left: 20px; padding-right: 20px; }
-  .actionBar { padding: 12px 20px; flex-wrap: wrap; }
+  .actionBar { padding: 12px 0; }
+  .actionBarInner { padding: 0 20px; flex-wrap: wrap; gap: 10px; }
   .actionBar .summary { flex: 1 0 100%; }
   .meterTrack { max-width: none; }
 }

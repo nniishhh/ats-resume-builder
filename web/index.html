@@ -10,7 +10,7 @@
   href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400;1,6..96,400&family=Jost:wght@300;400;500&display=swap"
   rel="stylesheet"
 />
-<link rel="stylesheet" href="/assets/style.css?v=4" />
+<link rel="stylesheet" href="/assets/style.css?v=5" />
 </head>
 <body>
 
@@ -73,9 +73,10 @@
 
       <div class="field">
         <label class="fieldLabel" for="modeSelect">Mode</label>
-        <select id="modeSelect" class="select">
-          <option value="sequential">Sequential — one company at a time</option>
-          <option value="single_prompt">Single prompt — all companies at once</option>
+        <!-- Short labels: the full phrasings overflowed the sidebar column. -->
+        <select id="modeSelect" class="select" title="Sequential generates one company at a time and avoids reusing starting verbs. Single prompt does all companies in one call.">
+          <option value="sequential">Sequential</option>
+          <option value="single_prompt">Single prompt</option>
         </select>
       </div>
 
@@ -246,13 +247,15 @@
 
 <!-- Editing 15 bullets should not mean hunting for the compile button. -->
 <div class="actionBar" id="actionBar" data-show="false">
-  <span class="summary" id="actionSummary"></span>
-  <button class="btn btnGhost" id="barReviewBtn">Back to review</button>
-  <button class="btn btnPrimary" id="barCompileBtn">
-    <svg width="16" height="16"><use href="#i-file"/></svg> Compile PDF
-  </button>
+  <div class="actionBarInner">
+    <span class="summary" id="actionSummary"></span>
+    <button class="btn btnGhost" id="barReviewBtn">Back to review</button>
+    <button class="btn btnPrimary" id="barCompileBtn">
+      <svg width="16" height="16"><use href="#i-file"/></svg> Compile PDF
+    </button>
+  </div>
 </div>
 
-<script src="/assets/app.js?v=4"></script>
+<script src="/assets/app.js?v=5"></script>
 </body>
 </html>
