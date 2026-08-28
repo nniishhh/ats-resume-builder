@@ -49,7 +49,6 @@ from main_code.resume_bullet_workflow import (
     MAX_BULLET_CHARS,
     MIN_BULLET_CHARS,
     MODEL_CHOICES,
-    extract_jd_signals,
     extract_numbered_bullets,
     extract_starting_verbs,
     generate_bullets,
@@ -95,6 +94,7 @@ class RegenerateRequest(BaseModel):
     instruction: str = ""
     model: str = DEFAULT_MODEL
     other_bullets: Dict[str, List[str]] = {}
+    seniority: str = ""
 
 
 class CompileRequest(BaseModel):
@@ -197,6 +197,7 @@ def generate(req: GenerateRequest):
             selected_courses,
             selected_topics,
             selected_academic_projects,
+            jd_signals,
         ) = run_all_with_full_selection(
             jd_path=jd_path,
             directory=DATA_DIR,
@@ -204,10 +205,6 @@ def generate(req: GenerateRequest):
             log_prompts=req.log_prompts,
             generation_mode=req.generation_mode,
         )
-        try:
-            jd_signals = extract_jd_signals(jd_text=req.jd_text.strip(), model=req.model)
-        except Exception:
-            jd_signals = {}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     finally:
@@ -253,6 +250,7 @@ def regenerate(req: RegenerateRequest):
             model=req.model,
             log_prompts=False,
             used_verbs=other_verbs,
+            seniority=req.seniority,
         )
         bullets = extract_numbered_bullets(output)
     except Exception as exc:
@@ -310,6 +308,7 @@ def compile_resume(req: CompileRequest):
         report.trim_actions = trim_actions
         report.skills_dropped = skills_dropped
         qa_report.check_layout(pdf_out, report)
+        qa_report.check_redundancy(req.bullets, report)
         qa_report.check_grounding(req.bullets, _evidence_by_company(DATA_DIR), report)
         must_have = (req.jd_signals or {}).get("must_have", [])
         if must_have:

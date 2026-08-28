@@ -23,7 +23,6 @@ if __package__ in (None, ""):
 
 from main_code import layout, qa_report
 from main_code.resume_bullet_workflow import (
-    extract_jd_signals,
     select_skills_for_jd,
     shorten_bullet_llm,
     DEFAULT_GENERATION_MODE,
@@ -651,12 +650,15 @@ def build_resume(
         file=sys.stderr,
     )
 
-    # 2. Generate bullets + JD-relevant coursework + top academic projects in parallel
+    # 2. Generate bullets + JD-relevant coursework + top academic projects in parallel.
+    # jd_signals (seniority/archetype) comes back from here too, since bullet generation
+    # already needs it to calibrate jargon density — no need to extract it again below.
     (
         bullets,
         selected_courses,
         selected_topics,
         selected_academic_projects,
+        jd_signals,
     ) = run_all_with_full_selection(
         jd_path=jd_path,
         directory=jd_path.parent,
@@ -678,8 +680,7 @@ def build_resume(
         file=sys.stderr,
     )
 
-    # 2b. Structured JD signals -> tailored Skills, whitelist-enforced in code
-    jd_signals = extract_jd_signals(jd_text=jd_text, model=model)
+    # 2b. Tailored Skills from the JD signals already extracted above, whitelist-enforced in code
     skill_categories, dropped_skills = select_skills_for_jd(
         jd_signals=jd_signals, model=model
     )
@@ -727,6 +728,7 @@ def build_resume(
 
         report.trim_actions = trim_actions
         qa_report.check_layout(pdf_out, report)
+        qa_report.check_redundancy(bullets, report)
         qa_report.check_grounding(bullets, _evidence_by_company(jd_path.parent), report)
         qa_report.check_jd_coverage(
             jd_signals.get("must_have", []), layout.extract_layout_text(pdf_out), report

@@ -7,6 +7,7 @@ rendered page carefully:
   - two-page output
   - bullets that wrap badly and leave an orphan line
   - repeated starting verbs
+  - the same distinctive figure repeated in back-to-back bullets within a company
   - claims (numbers, tools) that do not appear in the underlying evidence files
   - skills that are not in the master inventory
   - JD must-haves the resume never mentions
@@ -37,6 +38,7 @@ class QAReport:
     bullet_count: int = 0
     repeated_verbs: Dict[str, int] = field(default_factory=dict)
     orphans: List[str] = field(default_factory=list)
+    redundant_facts: List[str] = field(default_factory=list)
     grounding_issues: List[str] = field(default_factory=list)
     skills_kept: int = 0
     skills_dropped: List[str] = field(default_factory=list)
@@ -53,6 +55,7 @@ class QAReport:
             self.pages == 1
             and not self.repeated_verbs
             and not self.orphans
+            and not self.redundant_facts
             and not self.grounding_issues
             and not self.skills_dropped
         )
@@ -79,6 +82,13 @@ class QAReport:
                 rows.append(_row("", False, extra))
         else:
             rows.append(_row("Line fit", True, "no orphan lines"))
+
+        if self.redundant_facts:
+            rows.append(_row("Redundancy", False, self.redundant_facts[0]))
+            for extra in self.redundant_facts[1:]:
+                rows.append(_row("", False, extra))
+        else:
+            rows.append(_row("Redundancy", True, "no repeated figures in adjacent bullets"))
 
         if self.grounding_issues:
             rows.append(_row("Grounding", False, self.grounding_issues[0]))
@@ -127,6 +137,26 @@ def check_layout(pdf_path: Path, report: QAReport) -> QAReport:
 
 
 _NUMBER = re.compile(r"\d[\d,.]*\s*(?:%|K|M|B|x)?", re.IGNORECASE)
+
+
+def check_redundancy(
+    bullets_by_company: Dict[str, Sequence[str]], report: QAReport
+) -> QAReport:
+    """Flag a distinctive figure (e.g. "10K", "6M") repeated in back-to-back bullets.
+
+    Each fact is grounded and each bullet reads fine in isolation, but a reader scanning
+    top to bottom sees the same headline number twice in a row — a case-length check on a
+    single bullet can't catch this, only comparing neighbors can.
+    """
+    for company, bullets in bullets_by_company.items():
+        bullet_numbers = [_normalised_numbers(b) for b in bullets]
+        for i in range(len(bullet_numbers) - 1):
+            shared = bullet_numbers[i] & bullet_numbers[i + 1]
+            if shared:
+                report.redundant_facts.append(
+                    f"{company} #{i + 1}/#{i + 2}: both mention {', '.join(sorted(shared))}"
+                )
+    return report
 
 
 def check_grounding(

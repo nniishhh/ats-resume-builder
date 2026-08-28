@@ -136,6 +136,20 @@ STYLE PRINCIPLES
 - Avoid repetition.
 
 ========================================
+READER-CALIBRATED JARGON
+========================================
+Match technical density to "target_seniority" in the user payload. This never changes what
+happened, what tools were used, or what the result was — only how technically dense the
+phrasing is.
+- "intern" / "junior": Favor plain, concrete language a generalist hiring manager can follow
+  at a glance. Name tools directly (SQL, Python, Tableau) but avoid compressed technical
+  shorthand (e.g. "agglomerative clustering", "MILP", "record-linkage workflow") unless the
+  JD itself uses that exact term — describe the mechanism in plain words instead.
+- "mid" or unset: Balance plain language with domain terminology where it is precise.
+- "senior": Full technical density is expected — precise method, algorithm, and systems
+  terminology is rewarded, not a liability.
+
+========================================
 LEXICAL DIVERSITY RULE
 ========================================
 - Avoid repeating the same connector or phrasing across bullets.
@@ -152,6 +166,7 @@ def build_bullet_generation_user_prompt(
     jd_text: str,
     projects: List[Dict[str, Any]],
     used_verbs: List[str] | None,
+    seniority: str = "",
 ) -> Dict[str, Any]:
     return {
         "task": f"Generate {min_bullets}-{max_bullets} resume bullets for {company}.",
@@ -159,6 +174,7 @@ def build_bullet_generation_user_prompt(
         "min_bullets": min_bullets,
         "max_bullets": max_bullets,
         "job_description_summary": jd_text,
+        "target_seniority": seniority or "mid",
         "project_evidence": projects,
         "already_used_verbs": used_verbs or [],
         "lexical_diversity_rules": [
@@ -183,6 +199,7 @@ def build_bullet_repair_payload(
     used_verbs: List[str] | None,
     projects: List[Dict[str, Any]],
     attempt: int,
+    seniority: str = "",
 ) -> Dict[str, Any]:
     return {
         "instruction": (
@@ -203,6 +220,7 @@ def build_bullet_repair_payload(
             ),
         },
         "job_description_summary": jd_text,
+        "target_seniority": seniority or "mid",
         "already_used_verbs": used_verbs or [],
         "project_evidence": projects,
         "lexical_diversity_rules": [
@@ -296,6 +314,20 @@ STYLE PRINCIPLES
 - Avoid repetition within each company.
 
 ========================================
+READER-CALIBRATED JARGON
+========================================
+Match technical density to "target_seniority" in the user payload. This never changes what
+happened, what tools were used, or what the result was — only how technically dense the
+phrasing is.
+- "intern" / "junior": Favor plain, concrete language a generalist hiring manager can follow
+  at a glance. Name tools directly (SQL, Python, Tableau) but avoid compressed technical
+  shorthand (e.g. "agglomerative clustering", "MILP", "record-linkage workflow") unless the
+  JD itself uses that exact term — describe the mechanism in plain words instead.
+- "mid" or unset: Balance plain language with domain terminology where it is precise.
+- "senior": Full technical density is expected — precise method, algorithm, and systems
+  terminology is rewarded, not a liability.
+
+========================================
 LEXICAL DIVERSITY RULE
 ========================================
 - Avoid repeating the same connector or phrasing across bullets.
@@ -308,10 +340,12 @@ LEXICAL DIVERSITY RULE
 def build_all_bullets_user_prompt(
     jd_text: str,
     companies_spec: List[Dict[str, Any]],
+    seniority: str = "",
 ) -> Dict[str, Any]:
     return {
         "task": "Generate resume bullets for ALL companies below in one JSON response.",
         "job_description_summary": jd_text,
+        "target_seniority": seniority or "mid",
         "companies": companies_spec,
         "lexical_diversity_rules": [
             "Avoid repeating the same connector or phrasing across bullets.",
@@ -330,6 +364,7 @@ def build_all_bullets_repair_payload(
     previous_output: str,
     min_bullet_chars: int,
     max_bullet_chars: int,
+    seniority: str = "",
 ) -> Dict[str, Any]:
     return {
         "instruction": (
@@ -343,6 +378,7 @@ def build_all_bullets_repair_payload(
         "issues_by_company": issues_by_company,
         "previous_output": previous_output,
         "job_description_summary": jd_text,
+        "target_seniority": seniority or "mid",
         "companies": companies_spec,
         "output_rule": (
             "Return only a single JSON object: keys = company names, "

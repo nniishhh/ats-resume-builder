@@ -41,7 +41,6 @@ from main_code.resume_bullet_workflow import (
     MODEL_CHOICES,
     MIN_BULLET_CHARS,
     MAX_BULLET_CHARS,
-    extract_jd_signals,
     extract_numbered_bullets,
     extract_starting_verbs,
     generate_bullets,
@@ -434,6 +433,7 @@ def regenerate_company_bullets(company: str, instruction: str) -> list[str] | No
         other_verbs.extend(extract_starting_verbs(bullet_list))
 
     projects = read_projects(matches[0])
+    seniority = (st.session_state.get("jd_signals") or {}).get("seniority", "")
     output = generate_bullets(
         jd_text=guided_jd,
         project_file=matches[0],
@@ -441,6 +441,7 @@ def regenerate_company_bullets(company: str, instruction: str) -> list[str] | No
         model=model,
         log_prompts=False,
         used_verbs=other_verbs,
+        seniority=seniority,
     )
     return extract_numbered_bullets(output)
 
@@ -667,6 +668,7 @@ def main() -> None:
                         selected_courses,
                         selected_topics,
                         selected_academic_projects,
+                        jd_signals,
                     ) = run_all_with_full_selection(
                         jd_path=jd_path,
                         directory=DATA_DIR,
@@ -681,13 +683,8 @@ def main() -> None:
                 st.session_state.company_name = company_name.strip()
                 st.session_state.position_name = position_name.strip()
                 st.session_state.jd_text = jd_text.strip()
-                # Structured signals drive Skills selection and JD-coverage reporting.
-                try:
-                    st.session_state.jd_signals = extract_jd_signals(
-                        jd_text=jd_text.strip(), model=model
-                    )
-                except Exception:
-                    st.session_state.jd_signals = {}
+                # Drives Skills selection, JD-coverage reporting, and bullet jargon calibration.
+                st.session_state.jd_signals = jd_signals
                 st.session_state.pop("qa_report_text", None)
                 st.session_state.editor_nonce = int(st.session_state.get("editor_nonce", 0)) + 1
                 # Clear previous PDF so stale download button disappears

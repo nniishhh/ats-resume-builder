@@ -294,6 +294,7 @@
           instruction,
           model: $("modelSelect").value,
           other_bullets: otherBullets,
+          seniority: state.jdSignals.seniority || "",
         }),
       });
       state.bullets[company] = result.bullets;

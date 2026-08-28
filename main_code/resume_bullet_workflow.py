@@ -842,6 +842,7 @@ def generate_bullets(
     model: str,
     log_prompts: bool = False,
     used_verbs: List[str] | None = None,
+    seniority: str = "",
 ) -> str:
     company, min_bullets, max_bullets = parse_filename(project_file)
     generation_model, generation_temperature = get_task_llm_settings(
@@ -866,6 +867,7 @@ def generate_bullets(
         jd_text=jd_text,
         projects=projects,
         used_verbs=used_verbs,
+        seniority=seniority,
     )
     if log_prompts:
         log_path = write_prompt_log(
@@ -910,6 +912,7 @@ def generate_bullets(
             used_verbs=used_verbs,
             projects=projects,
             attempt=attempt,
+            seniority=seniority,
         )
         repair_messages = [
             {"role": "system", "content": system_prompt},
@@ -972,6 +975,7 @@ def generate_all_bullets(
     company_data: List[Dict[str, Any]],
     model: str,
     log_prompts: bool = False,
+    seniority: str = "",
 ) -> Dict[str, List[str]]:
     task_model, task_temperature = get_task_llm_settings(
         LLM_TASK_BULLETS_ALL,
@@ -999,6 +1003,7 @@ def generate_all_bullets(
     user_prompt = build_all_bullets_user_prompt(
         jd_text=jd_text,
         companies_spec=companies_spec,
+        seniority=seniority,
     )
 
     if log_prompts:
@@ -1076,6 +1081,7 @@ def generate_all_bullets(
             previous_output=raw,
             min_bullet_chars=MIN_BULLET_CHARS,
             max_bullet_chars=MAX_BULLET_CHARS,
+            seniority=seniority,
         )
         if log_prompts:
             repair_log_path = write_prompt_log(
@@ -1121,6 +1127,7 @@ def run_all(
     log_prompts: bool,
     generation_mode: Literal["single_prompt", "sequential"] = DEFAULT_GENERATION_MODE,
     jd_summary_text: str | None = None,
+    seniority: str = "",
 ) -> Dict[str, List[str]]:
     if jd_summary_text is None:
         raw_jd_text = read_jd(jd_path)
@@ -1170,6 +1177,7 @@ def run_all(
             company_data=generate_input,
             model=model,
             log_prompts=log_prompts,
+            seniority=seniority,
         )
 
     print("[info] Generation mode: sequential", file=sys.stderr)
@@ -1188,6 +1196,7 @@ def run_all(
             model=model,
             log_prompts=log_prompts,
             used_verbs=used_verbs,
+            seniority=seniority,
         )
         company_bullets = extract_numbered_bullets(output)
         results[company] = company_bullets
@@ -1248,13 +1257,23 @@ def run_all_with_full_selection(
     top_k_courses: int = DEFAULT_TOP_COURSE_COUNT,
     academic_project_file: Path | None = None,
     top_k_academic_topics: int = DEFAULT_TOP_ACADEMIC_PROJECT_COUNT,
-) -> Tuple[Dict[str, List[str]], List[str], List[str], List[Dict[str, Any]]]:
+) -> Tuple[Dict[str, List[str]], List[str], List[str], List[Dict[str, Any]], Dict[str, Any]]:
     raw_jd_text = read_jd(jd_path)
-    jd_summary = summarize_job_description(jd_text=raw_jd_text, model=model)
     project_file = academic_project_file or (directory / DEFAULT_ACADEMIC_PROJECT_FILE)
     if not project_file.exists():
         raise FileNotFoundError(f"Academic project file not found: {project_file}")
     academic_projects = read_projects(project_file)
+
+    # jd_signals (seniority/archetype) has to be known before bullet generation starts,
+    # since it steers how technically dense the bullets read — so it runs alongside the
+    # summary rather than after everything else, which is where it used to live and where
+    # it was too late to inform generation at all.
+    with ThreadPoolExecutor(max_workers=2) as pre_executor:
+        summary_future = pre_executor.submit(summarize_job_description, raw_jd_text, model)
+        signals_future = pre_executor.submit(extract_jd_signals, raw_jd_text, model)
+        jd_summary = summary_future.result()
+        jd_signals = signals_future.result()
+    seniority = jd_signals.get("seniority", "")
 
     with ThreadPoolExecutor(max_workers=3) as executor:
         bullets_future = executor.submit(
@@ -1265,6 +1284,7 @@ def run_all_with_full_selection(
             log_prompts,
             generation_mode,
             jd_summary,
+            seniority,
         )
         courses_future = executor.submit(
             select_top_courses_for_jd,
@@ -1308,7 +1328,7 @@ def run_all_with_full_selection(
         for project in selected_projects
         if str(project.get("Topic", "")).strip()
     ]
-    return bullets, selected_courses, selected_topics, selected_projects
+    return bullets, selected_courses, selected_topics, selected_projects, jd_signals
 
 
 def main() -> int:
