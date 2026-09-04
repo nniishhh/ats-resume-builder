@@ -37,7 +37,6 @@ from main_code.build_resume import (
     _plan_note,
     drop_experience_entries,
     replace_skills,
-    reorder_sections,
     slugify,
     tighten_spacing,
 )
@@ -106,7 +105,6 @@ class CompileRequest(BaseModel):
     selected_courses: List[str]
     selected_academic_topics: List[str]
     jd_signals: Dict[str, Any] = {}
-    projects_first: bool = False
     plan: Dict[str, Any] = {}
 
 
@@ -298,7 +296,6 @@ def compile_resume(req: CompileRequest):
             )
             new_tex = replace_skills(new_tex, skill_categories)
 
-        new_tex = reorder_sections(new_tex, bool(req.projects_first))
         new_tex = tighten_spacing(new_tex)
 
         slug = f"oranich_resume_{slugify(req.company_name)}_{slugify(req.position_name)}"

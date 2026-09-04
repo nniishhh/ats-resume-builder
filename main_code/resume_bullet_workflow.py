@@ -1324,8 +1324,7 @@ def run_all_with_full_selection(
     top_k_courses = plan["coursework"]
     top_k_academic_topics = plan["projects"]
     print(f"[info] Structure plan: {plan['roles']} "
-          f"projects={plan['projects']} coursework={plan['coursework']} "
-          f"projects_first={plan['projects_first']}", file=sys.stderr)
+          f"projects={plan['projects']} coursework={plan['coursework']}", file=sys.stderr)
 
     with ThreadPoolExecutor(max_workers=3) as executor:
         bullets_future = executor.submit(
@@ -1547,7 +1546,6 @@ def plan_resume_structure(
         "roles": {c: mx for c, (_, mx) in bounds.items()},
         "projects": DEFAULT_TOP_ACADEMIC_PROJECT_COUNT,
         "coursework": DEFAULT_TOP_COURSE_COUNT,
-        "projects_first": False,
         "reasons": {},
     }
 
@@ -1623,7 +1621,6 @@ def plan_resume_structure(
         "roles": planned_roles,
         "projects": _clamp("projects", 2, 4, DEFAULT_TOP_ACADEMIC_PROJECT_COUNT),
         "coursework": _clamp("coursework", 3, 5, DEFAULT_TOP_COURSE_COUNT),
-        "projects_first": bool(proposed.get("projects_first", False)),
         "reasons": proposed.get("reasons") or {},
     }
 

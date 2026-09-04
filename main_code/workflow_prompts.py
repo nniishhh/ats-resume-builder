@@ -413,7 +413,6 @@ def build_structure_plan_prompts(
         '  "roles": {"<role_key>": <int bullets>, ...},\n'
         '  "projects": <int>,\n'
         '  "coursework": <int>,\n'
-        '  "projects_first": <bool>,\n'
         '  "reasons": {"<role_key>": "<short reason>", ...}\n'
         "}\n\n"
         "RULES\n"
@@ -426,9 +425,8 @@ def build_structure_plan_prompts(
         "  whose work does not.\n"
         "- Drop a role only when its evidence genuinely does not serve this posting.\n"
         "- Weight by what the posting screens on, not by recency or brand.\n"
-        "- projects_first: true when the posting cares more about what the candidate has\n"
-        "  built and shipped than about employment history — startup, founding, builder and\n"
-        "  applied-AI roles typically. False for corporate, research and analyst roles.\n"
+        "- Section order is fixed: Experience always comes before Academic Projects.\n"
+        "  You are allocating space only, never reordering the page.\n"
         "- Prefer depth on the one or two roles that match, over thin coverage of everything.\n"
         "- reasons: one short clause per role explaining the count. This is shown to the "
         "candidate, so be concrete about the posting, not generic.\n"
