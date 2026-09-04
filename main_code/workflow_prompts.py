@@ -106,12 +106,15 @@ READER-CALIBRATED JARGON
 Match technical density to "target_seniority" in the user payload. This never changes what
 happened, what tools were used, or what the result was — only how technically dense the
 phrasing is.
+- Domain familiarity overrides seniority: use niche technical terms only when the JD shows
+  the reader likely knows that specific specialty; otherwise use a clear functional term that
+  explains the work (e.g. "route optimization" instead of "VRPTW").
 - "intern" / "junior": Favor plain, concrete language a generalist hiring manager can follow
   at a glance. Name tools directly (SQL, Python, Tableau) but avoid compressed technical
   shorthand (e.g. "agglomerative clustering", "MILP", "record-linkage workflow") unless the
   JD itself uses that exact term — describe the mechanism in plain words instead.
 - "mid" or unset: Balance plain language with domain terminology where it is precise.
-- "senior": Full technical density is expected — precise method, algorithm, and systems
+- "senior": Within the JD's actual specialty, precise method, algorithm, and systems
   terminology is rewarded, not a liability.
 
 ========================================
