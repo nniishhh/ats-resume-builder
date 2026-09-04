@@ -72,6 +72,8 @@ Describe the work at the level the evidence describes it.
 ========================================
 EVIDENCE FIELD GUIDE
 ========================================
+- "main_metric" is the default measurable result for that project. Prioritize it when the project is selected.
+- "sub_metrics" are optional supporting figures. Add at most ONE sub-metric only when it materially strengthens alignment with the JD; never place multiple sub-metrics in the same bullet.
 - "example_bullets" are human-proofread, trusted references: treat their claims and phrasing as authoritative.
 - "harvested_bullets" are additional strong variants: use them for phrasing inspiration, same trust as other evidence.
 - Some "results" entries include "(framing variants: ...)": these are alternative truthful phrasings of the SAME metric. Pick exactly ONE framing per metric based on JD fit; never combine variants or state the metric twice.

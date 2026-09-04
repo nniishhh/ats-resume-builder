@@ -189,7 +189,7 @@ def check_grounding(
 def _evidence_text(projects: Sequence[dict]) -> str:
     parts: List[str] = []
     for project in projects:
-        for key in ("problem", "actions", "results", "tools", "keywords",
+        for key in ("problem", "actions", "main_metric", "sub_metrics", "results", "tools", "keywords",
                     "example_bullets", "harvested_bullets"):
             value = project.get(key)
             if isinstance(value, str):

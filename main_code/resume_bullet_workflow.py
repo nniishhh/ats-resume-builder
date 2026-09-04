@@ -643,7 +643,7 @@ def _numeric_claims(text: str) -> set[str]:
 def _evidence_numeric_claims(projects: Sequence[Dict[str, Any]]) -> set[str]:
     parts: List[str] = []
     for project in projects:
-        for key in ("problem", "actions", "results", "tools", "keywords",
+        for key in ("problem", "actions", "main_metric", "sub_metrics", "results", "tools", "keywords",
                     "example_bullets", "harvested_bullets"):
             value = project.get(key)
             if isinstance(value, str):
