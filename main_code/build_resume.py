@@ -732,7 +732,10 @@ def build_resume(
 
     # 2b. Tailored Skills from the JD signals already extracted above, whitelist-enforced in code
     skill_categories, dropped_skills = select_skills_for_jd(
-        jd_signals=jd_signals, model=model
+        jd_signals=jd_signals,
+        model=model,
+        selected_bullets=bullets,
+        selected_projects=selected_academic_projects,
     )
     if dropped_skills:
         print(

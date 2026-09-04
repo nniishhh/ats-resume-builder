@@ -68,6 +68,9 @@ TOKEN_BUFFER = 1000
 MIN_MAX_TOKENS = 4000
 DEFAULT_TOP_COURSE_COUNT = 4
 DEFAULT_TOP_ACADEMIC_PROJECT_COUNT = 3
+DEFAULT_MAX_SKILL_CATEGORIES = 4
+DEFAULT_MAX_SKILLS_PER_CATEGORY = 6
+DEFAULT_MAX_TOTAL_SKILLS = 24
 DEFAULT_ACADEMIC_PROJECT_FILE = "proj_academic_2-2.json"
 DEFAULT_COLUMBIA_COURSES = [
     "Applied machine learning",
@@ -1685,7 +1688,11 @@ def select_skills_for_jd(
     jd_signals: Dict[str, Any],
     model: str,
     inventory: Dict[str, Any] | None = None,
-    max_per_category: int = 10,
+    selected_bullets: Dict[str, List[str]] | None = None,
+    selected_projects: Sequence[Dict[str, Any]] | None = None,
+    max_categories: int = DEFAULT_MAX_SKILL_CATEGORIES,
+    max_per_category: int = DEFAULT_MAX_SKILLS_PER_CATEGORY,
+    max_total_skills: int = DEFAULT_MAX_TOTAL_SKILLS,
 ) -> Tuple[List[Dict[str, Any]], List[str]]:
     """Tailor the Skills section, enforcing the inventory whitelist in code.
 
@@ -1696,12 +1703,32 @@ def select_skills_for_jd(
     inv = inventory if inventory is not None else load_skills_inventory()
     index = _inventory_index(inv)
     dropped: List[str] = []
+    selected_resume_evidence = {
+        "experience_bullets": selected_bullets or {},
+        "academic_projects": [
+            {
+                "topic": str(project.get("Topic", "")).strip(),
+                "bullets": [
+                    str(bullet).strip()
+                    for bullet in project.get("Bullet", [])
+                    if str(bullet).strip()
+                ],
+            }
+            for project in (selected_projects or [])
+            if isinstance(project, dict)
+        ],
+    }
 
     task_model, task_temperature = get_task_llm_settings(
         LLM_TASK_SKILLS_SELECTION, fallback_model=model
     )
     system_prompt, user_prompt = build_skills_selection_prompts(
-        jd_signals=jd_signals, inventory=inv, max_per_category=max_per_category
+        jd_signals=jd_signals,
+        inventory=inv,
+        selected_resume_evidence=selected_resume_evidence,
+        max_categories=max_categories,
+        max_per_category=max_per_category,
+        max_total_skills=max_total_skills,
     )
     try:
         raw = call_llm(
@@ -1719,10 +1746,19 @@ def select_skills_for_jd(
         proposed = []
 
     if not proposed:
-        return _fallback_skills(inv, max_per_category), dropped
+        return _fallback_skills(
+            inv,
+            max_categories=max_categories,
+            max_per_category=max_per_category,
+            max_total_skills=max_total_skills,
+        ), dropped
 
     categories: List[Dict[str, Any]] = []
+    globally_kept: set[str] = set()
+    remaining = max(0, max_total_skills)
     for category in proposed:
+        if len(categories) >= max(0, max_categories) or remaining <= 0:
+            break
         if not isinstance(category, dict):
             continue
         kept: List[str] = []
@@ -1730,32 +1766,58 @@ def select_skills_for_jd(
             canonical = index.get(str(name).strip().lower())
             if canonical is None:
                 dropped.append(str(name))
-            elif canonical not in kept:
+            elif canonical not in globally_kept:
                 kept.append(canonical)
+                globally_kept.add(canonical)
+            if len(kept) >= max(0, max_per_category) or len(kept) >= remaining:
+                break
         if kept:
             categories.append(
                 {
                     "id": category.get("id", ""),
                     "label": category.get("label") or category.get("id", "Skills"),
-                    "skills": kept[:max_per_category],
+                    "skills": kept,
                 }
             )
+            remaining -= len(kept)
 
     if not categories:
-        return _fallback_skills(inv, max_per_category), dropped
+        return _fallback_skills(
+            inv,
+            max_categories=max_categories,
+            max_per_category=max_per_category,
+            max_total_skills=max_total_skills,
+        ), dropped
     return categories, dropped
 
 
-def _fallback_skills(inventory: Dict[str, Any], max_per_category: int) -> List[Dict[str, Any]]:
+def _fallback_skills(
+    inventory: Dict[str, Any],
+    max_categories: int,
+    max_per_category: int,
+    max_total_skills: int,
+) -> List[Dict[str, Any]]:
     """Inventory order, truncated. Used when the model call fails or returns nothing usable."""
-    return [
-        {
-            "id": c.get("id", ""),
-            "label": c.get("label", "Skills"),
-            "skills": [s["name"] for s in c.get("skills", [])][:max_per_category],
-        }
-        for c in inventory.get("categories", [])
-    ]
+    categories: List[Dict[str, Any]] = []
+    remaining = max(0, max_total_skills)
+    for category in inventory.get("categories", [])[:max(0, max_categories)]:
+        if remaining <= 0:
+            break
+        skills = [
+            skill["name"]
+            for skill in category.get("skills", [])
+            if skill.get("name")
+        ][:min(max(0, max_per_category), remaining)]
+        if skills:
+            categories.append(
+                {
+                    "id": category.get("id", ""),
+                    "label": category.get("label", "Skills"),
+                    "skills": skills,
+                }
+            )
+            remaining -= len(skills)
+    return categories
 
 
 

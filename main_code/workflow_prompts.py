@@ -453,7 +453,10 @@ def build_structure_plan_prompts(
 def build_skills_selection_prompts(
     jd_signals: Dict[str, Any],
     inventory: Dict[str, Any],
-    max_per_category: int = 10,
+    selected_resume_evidence: Dict[str, Any] | None = None,
+    max_categories: int = 4,
+    max_per_category: int = 6,
+    max_total_skills: int = 24,
 ) -> Tuple[str, str]:
     """Choose and order the Skills section from a fixed whitelist.
 
@@ -463,16 +466,29 @@ def build_skills_selection_prompts(
     """
     system_prompt = (
         "You are tailoring the Skills section of a resume to a job description.\n\n"
+        "PURPOSE\n"
+        "- Build a compact recruiter-and-ATS index of the candidate's strongest, most relevant skills.\n"
+        "- The Experience and Academic Projects sections prove capability; Skills should make the\n"
+        "  most important evidence easy to find, not reproduce the candidate's full inventory.\n\n"
         "CRITICAL CONSTRAINT\n"
         "- You may ONLY return skill names that appear VERBATIM in the provided inventory.\n"
         "- The inventory is exhaustive. If a skill the JD asks for is not in it, the candidate\n"
         "  does not have it. Omit it. Do NOT substitute a similar-sounding skill.\n"
         "- Never invent, rename, reword, or abbreviate a skill name.\n\n"
         "SELECTION\n"
+        f"- Return at most {max_categories} categories.\n"
         f"- Return at most {max_per_category} skills per category.\n"
+        f"- Return at most {max_total_skills} skills total across all categories.\n"
+        "- Aim for 16-20 total skills when that many are directly relevant and supported. Use\n"
+        "  fewer when the evidence is narrower; never pad.\n"
+        "- Prioritize exact must_have matches from the JD signals.\n"
+        "- Include a secondary or nice_to_have skill only when its inventory evidence is also\n"
+        "  supported by a selected experience bullet or selected academic project.\n"
+        "- Prefer concrete tools, languages, platforms, and specific methods over broad phrases\n"
+        "  such as generic analysis, communication, or problem-solving labels.\n"
         "- Drop categories that are not relevant to this job; do not pad them.\n"
         "- Order categories most-relevant first, and skills within a category most-relevant first.\n"
-        "- Prefer must_have matches over nice_to_have.\n\n"
+        "- A skill being present in the inventory makes it eligible, not automatically worth listing.\n\n"
         "Return ONLY valid JSON:\n"
         '{"categories": [{"id": "<category id from inventory>", "label": "<label to print>",\n'
         '                 "skills": ["<verbatim inventory names>"]}]}'
@@ -481,6 +497,7 @@ def build_skills_selection_prompts(
         {
             "job_signals": jd_signals,
             "inventory": inventory,
+            "selected_resume_evidence": selected_resume_evidence or {},
             "reminder": "Every returned skill must match an inventory name character for character.",
         },
         ensure_ascii=True,

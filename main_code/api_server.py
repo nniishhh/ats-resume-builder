@@ -292,7 +292,10 @@ def compile_resume(req: CompileRequest):
         skills_dropped: List[str] = []
         if req.jd_signals:
             skill_categories, skills_dropped = select_skills_for_jd(
-                jd_signals=req.jd_signals, model=req.model
+                jd_signals=req.jd_signals,
+                model=req.model,
+                selected_bullets=req.bullets,
+                selected_projects=selected_academic_projects,
             )
             new_tex = replace_skills(new_tex, skill_categories)
 

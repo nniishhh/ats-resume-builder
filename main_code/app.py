@@ -772,7 +772,10 @@ def main() -> None:
                     jd_signals = st.session_state.get("jd_signals") or {}
                     if jd_signals:
                         skill_categories, dropped_skills = select_skills_for_jd(
-                            jd_signals=jd_signals, model=model
+                            jd_signals=jd_signals,
+                            model=model,
+                            selected_bullets=edited_bullets,
+                            selected_projects=selected_academic_projects or [],
                         )
                         new_tex = replace_skills(new_tex, skill_categories)
                         st.session_state.skills_dropped = dropped_skills
