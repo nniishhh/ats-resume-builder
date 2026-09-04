@@ -31,8 +31,8 @@ An array of project objects:
     ],
     "tools": ["Python", "SQL"],
     "keywords": ["Data Engineering", "Automation"],
-    "example_bullets": ["A human-proofread bullet. Treated as authoritative."],
-    "harvested_bullets": ["Alternate phrasing, used for inspiration."]
+    "approved_bullets": ["A human-reviewed and fact-checked reference bullet."],
+    "alternate_bullets": ["Optional alternate wording, used only for inspiration."]
   }
 ]
 ```
@@ -41,7 +41,9 @@ Notes:
 
 - `results` entries may carry `(framing variants: ...)` — alternative truthful phrasings of the
   **same** metric. The generator picks exactly one based on JD fit.
-- `example_bullets` are trusted references; the generator leans on their phrasing.
+- `approved_bullets` are trusted, human-reviewed references.
+- `alternate_bullets` are phrasing inspiration only; claims unique to them are not treated as evidence.
+- Older `example_bullets` and `harvested_bullets` fields are accepted automatically for compatibility.
 - Every number that appears in a generated bullet must appear somewhere in this file, or the
   grounding validator rejects it. Metrics live here, not in the prompt.
 

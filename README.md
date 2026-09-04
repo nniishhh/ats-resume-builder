@@ -56,7 +56,7 @@ flowchart LR
 - **ATS Optimization**: Reframes experience with JD keywords and terminology for maximum ATS relevance.
 - **Two Generation Modes**: `sequential` (one company at a time, tracks used starting verbs across companies) or `single_prompt` (all companies in one call). Both enforce length in code with a repair round.
 - **Code-Enforced Constraints**: Bullet length is checked with Python `len()` against `200 <= len(bullet) <= 240`; also validates bullet count and unique starting verbs.
-- **Evidence-Based**: Stays grounded in the provided project JSON — no fabrication. Human-proofread `example_bullets` are treated as authoritative.
+- **Evidence-Based**: Stays grounded in the provided project JSON — no fabrication. Human-reviewed `approved_bullets` are trusted references; `alternate_bullets` provide wording inspiration only.
 - **Lexical Diversity**: Varies vocabulary, avoids repetition, and spreads tool mentions across bullets.
 
 ### Generation Pipeline
@@ -64,7 +64,7 @@ flowchart LR
 **Input Format:**
 - **Job description**: header+body (`company_name: X`, `position_name: Y`, `---`, then the JD text), a JSON object, or plain text.
 - **Work evidence**: `data/work_<company>_<min>-<max>.json`, where the filename encodes how many bullets to generate. Each project provides:
-  `problem`, `actions`, `results` (with optional `(framing variants: ...)`), `tools`, `keywords`, `example_bullets` (proofread references), and `harvested_bullets` (additional variants).
+  `problem`, `actions`, `results` (with optional `(framing variants: ...)`), `tools`, `keywords`, `approved_bullets` (human-reviewed references), and `alternate_bullets` (wording variants).
 - **Academic projects**: `data/proj_academic_2-2.json` using `Topic`, `Bullet`, `Link` (selected, not regenerated).
 
 **Generation Process:**

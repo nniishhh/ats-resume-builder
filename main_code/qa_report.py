@@ -189,8 +189,12 @@ def check_grounding(
 def _evidence_text(projects: Sequence[dict]) -> str:
     parts: List[str] = []
     for project in projects:
-        for key in ("problem", "actions", "main_metric", "sub_metrics", "results", "tools", "keywords",
-                    "example_bullets", "harvested_bullets"):
+        # Alternate bullets are wording inspiration, not independent evidence.
+        # Keep the legacy example_bullets key for older evidence files.
+        for key in (
+            "problem", "actions", "main_metric", "sub_metrics", "results",
+            "tools", "keywords", "approved_bullets", "example_bullets",
+        ):
             value = project.get(key)
             if isinstance(value, str):
                 parts.append(value)

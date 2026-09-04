@@ -226,6 +226,15 @@ def read_projects(project_path: Path) -> List[Dict[str, Any]]:
     data = json.loads(raw)
     if not isinstance(data, list) or not data:
         raise ValueError("Project JSON must be a non-empty array.")
+
+    # Normalize the original names so existing evidence files remain compatible.
+    for project in data:
+        if not isinstance(project, dict):
+            continue
+        if "approved_bullets" not in project and "example_bullets" in project:
+            project["approved_bullets"] = project.pop("example_bullets")
+        if "alternate_bullets" not in project and "harvested_bullets" in project:
+            project["alternate_bullets"] = project.pop("harvested_bullets")
     return data
 
 
@@ -643,8 +652,10 @@ def _numeric_claims(text: str) -> set[str]:
 def _evidence_numeric_claims(projects: Sequence[Dict[str, Any]]) -> set[str]:
     parts: List[str] = []
     for project in projects:
-        for key in ("problem", "actions", "main_metric", "sub_metrics", "results", "tools", "keywords",
-                    "example_bullets", "harvested_bullets"):
+        for key in (
+            "problem", "actions", "main_metric", "sub_metrics", "results",
+            "tools", "keywords", "approved_bullets", "example_bullets",
+        ):
             value = project.get(key)
             if isinstance(value, str):
                 parts.append(value)

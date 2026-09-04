@@ -74,8 +74,9 @@ EVIDENCE FIELD GUIDE
 ========================================
 - "main_metric" is the default measurable result for that project. Prioritize it when the project is selected.
 - "sub_metrics" are optional supporting figures. Add at most ONE sub-metric only when it materially strengthens alignment with the JD; never place multiple sub-metrics in the same bullet.
-- "example_bullets" are human-proofread, trusted references: treat their claims and phrasing as authoritative.
-- "harvested_bullets" are additional strong variants: use them for phrasing inspiration, same trust as other evidence.
+- "approved_bullets" are human-reviewed and fact-checked references. Treat their claims and phrasing as trusted.
+- "alternate_bullets" are optional wording variants for inspiration only. Do not treat a claim found only in an alternate bullet as evidence.
+- The structured problem, actions, results, and tools fields remain the primary source of truth.
 - Some "results" entries include "(framing variants: ...)": these are alternative truthful phrasings of the SAME metric. Pick exactly ONE framing per metric based on JD fit; never combine variants or state the metric twice.
 - "keywords" are ATS vocabulary hints, not facts; weave them in only where the evidence supports them.
 
