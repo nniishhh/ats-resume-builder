@@ -242,6 +242,58 @@
         </div>
       </div>
     </section>
+
+    <!-- Cover letter — a separate document from the same JD, deliberately NOT a
+         step in the resume stepper: you can draft one without building a resume. -->
+    <section class="card" id="card-cover" hidden>
+      <div class="cardHead" data-static="true">
+        <span class="cardNum">CL</span>
+        <span class="cardTitles">
+          <h2>Cover letter</h2>
+          <p class="sub">Drafted from the same evidence as the bullets, then checked before it can compile.</p>
+        </span>
+      </div>
+      <div class="cardBody">
+        <button class="btn btnPrimary btnLg btnBlock" id="coverBtn">
+          <svg width="17" height="17"><use href="#i-wand"/></svg> Draft cover letter
+        </button>
+        <div id="coverStatus" class="statusMsg" role="status" aria-live="polite"></div>
+
+        <div id="coverIssues" hidden>
+          <hr class="hr" />
+          <p class="eyebrow">Not safe to submit</p>
+          <p class="caption">
+            Every reason this draft was refused. Nothing compiles until they are gone —
+            a rejected draft is shown so you can see what was wrong with it, not so it
+            can be sent.
+          </p>
+          <ul id="coverIssueList" class="caption"></ul>
+        </div>
+
+        <div id="coverEditor" hidden>
+          <hr class="hr" />
+          <p class="eyebrow">Draft <span class="badge" id="coverWords"></span></p>
+          <p class="caption">
+            Edit freely — the same checks run again on compile, so an edit cannot
+            reintroduce a placeholder or an unsupported figure without being caught.
+          </p>
+          <div id="coverParagraphs"></div>
+          <button class="btn btnPrimary btnLg btnBlock" id="coverCompileBtn" style="margin-top:14px">
+            <svg width="17" height="17"><use href="#i-file"/></svg> Compile letter PDF
+          </button>
+          <div id="coverCompileStatus" class="statusMsg" role="status" aria-live="polite"></div>
+        </div>
+
+        <div id="coverPreviewBlock" hidden>
+          <hr class="hr" />
+          <p class="eyebrow">Preview</p>
+          <iframe id="coverPreview" class="pdfPreview" title="Compiled cover letter preview"></iframe>
+          <a class="btn btnGhost btnBlock" id="coverDownload" download style="margin-top:14px">
+            <svg width="16" height="16"><use href="#i-download"/></svg> Download PDF
+          </a>
+        </div>
+      </div>
+    </section>
   </main>
 </div>
 
@@ -256,6 +308,6 @@
   </div>
 </div>
 
-<script src="/assets/app.js?v=5"></script>
+<script src="/assets/app.js?v=6"></script>
 </body>
 </html>

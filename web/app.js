@@ -198,6 +198,12 @@
     if (!reasons.length && !hasJd) reasons.push("add a company name and job description above");
 
     $("generateBtn").disabled = reasons.length > 0;
+
+    // The cover letter needs only the JD, so it appears as soon as one exists
+    // rather than waiting behind the resume steps.
+    const coverReady = Boolean(hasJd && s && s.cover_letter_template_exists);
+    $("card-cover").hidden = !coverReady;
+    $("coverBtn").disabled = !coverReady;
     if (reasons.length) {
       hint.hidden = false;
       hint.innerHTML = `${icon("alert", 15)}<span>Can't generate yet — ${reasons.join("; ")}.</span>`;
@@ -666,4 +672,143 @@
     await Promise.all([loadStatus(), loadJdDefault(), loadAcademicProjects()]);
     updateReadiness();
   })();
+
+  // ── Cover letter ─────────────────────────────────────────────────────────
+  // Two calls, deliberately: /api/cover-letter drafts and judges, and only
+  // /api/compile-cover-letter produces a file. The judgement is shown either
+  // way — a refused draft is displayed so you can see what was wrong with it,
+  // never so it can be sent.
+
+  function coverParagraphsFromDom() {
+    return Array.from(document.querySelectorAll("textarea[data-cover-para]"))
+      .map((a) => a.value.trim())
+      .filter(Boolean);
+  }
+
+  function renderCoverIssues(issues) {
+    const wrap = $("coverIssues");
+    const list = $("coverIssueList");
+    list.innerHTML = "";
+    if (!issues || !issues.length) {
+      wrap.hidden = true;
+      return;
+    }
+    issues.forEach((issue) => {
+      const li = document.createElement("li");
+      li.textContent = issue;
+      list.appendChild(li);
+    });
+    wrap.hidden = false;
+  }
+
+  function renderCoverWords() {
+    const words = coverParagraphsFromDom().join(" ").split(/\s+/).filter(Boolean).length;
+    const limits = state.coverLimits || {};
+    const badge = $("coverWords");
+    badge.textContent = `${words} words`;
+    const under = limits.min_words && words < limits.min_words;
+    const over = limits.max_words && words > limits.max_words;
+    badge.title = under
+      ? `Below the ${limits.min_words}-word minimum`
+      : over
+        ? `Above the ${limits.max_words}-word maximum`
+        : "";
+    badge.dataset.state = under || over ? "warn" : "ok";
+  }
+
+  function renderCoverDraft(paragraphs) {
+    const wrap = $("coverParagraphs");
+    wrap.innerHTML = "";
+    paragraphs.forEach((text, i) => {
+      const area = document.createElement("textarea");
+      area.className = "textarea";
+      area.rows = Math.max(4, Math.ceil(text.length / 95) + 1);
+      area.value = text;
+      area.dataset.coverPara = String(i);
+      area.style.marginBottom = "10px";
+      area.addEventListener("input", renderCoverWords);
+      wrap.appendChild(area);
+    });
+    $("coverEditor").hidden = paragraphs.length === 0;
+    renderCoverWords();
+  }
+
+  $("coverBtn").addEventListener("click", async () => {
+    const btn = $("coverBtn");
+    btn.disabled = true;
+    setStatus($("coverStatus"), "Drafting from your evidence…", null);
+    $("coverPreviewBlock").hidden = true;
+    setStatus($("coverCompileStatus"), "", null);
+    try {
+      const result = await api("/api/cover-letter", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_name: $("companyName").value.trim(),
+          position_name: $("positionName").value.trim(),
+          jd_text: $("jdText").value.trim(),
+          model: $("modelSelect").value,
+          log_prompts: $("logPrompts").checked,
+        }),
+      });
+      state.coverLimits = result.limits || {};
+      renderCoverDraft(result.paragraphs || []);
+      renderCoverIssues(result.issues);
+      setStatus(
+        $("coverStatus"),
+        result.usable
+          ? "Draft passed every check. Read it before you send it."
+          : "This draft was refused — see the reasons below. Fix them and it will compile.",
+        result.usable ? "ok" : "err"
+      );
+      $("coverCompileBtn").disabled = false;
+    } catch (err) {
+      setStatus($("coverStatus"), `Drafting failed: ${err.message}`, "err");
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  $("coverCompileBtn").addEventListener("click", async () => {
+    const btn = $("coverCompileBtn");
+    const paragraphs = coverParagraphsFromDom();
+    if (!paragraphs.length) {
+      setStatus($("coverCompileStatus"), "Nothing to compile.", "err");
+      return;
+    }
+    btn.disabled = true;
+    setStatus($("coverCompileStatus"), "Compiling…", null);
+    try {
+      const result = await api("/api/compile-cover-letter", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_name: $("companyName").value.trim(),
+          position_name: $("positionName").value.trim(),
+          paragraphs,
+          jd_text: $("jdText").value.trim(),
+        }),
+      });
+      const url = `data:application/pdf;base64,${result.pdf_base64}`;
+      $("coverPreview").src = url;
+      const link = $("coverDownload");
+      link.href = url;
+      link.setAttribute("download", result.pdf_name);
+      $("coverPreviewBlock").hidden = false;
+      renderCoverIssues([]);
+      const warning = result.report && result.report.warning;
+      setStatus(
+        $("coverCompileStatus"),
+        warning || `Compiled — ${result.report.pages} page, ${result.report.word_count} words.`,
+        warning ? "err" : "ok"
+      );
+    } catch (err) {
+      // A 422 here is the server refusing an edited draft, which is the check
+      // doing its job — show the reason verbatim rather than "compile failed".
+      setStatus($("coverCompileStatus"), err.message, "err");
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
 })();

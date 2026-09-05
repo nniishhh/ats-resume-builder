@@ -40,6 +40,17 @@ from main_code.build_resume import (
     slugify,
     tighten_spacing,
 )
+from main_code.build_cover_letter import (
+    compile_cover_letter,
+    TEMPLATE_NAME as COVER_LETTER_TEMPLATE,
+)
+from main_code.cover_letter_workflow import (
+    MAX_COVER_LETTER_PARAGRAPHS,
+    MAX_COVER_LETTER_WORDS,
+    MIN_COVER_LETTER_WORDS,
+    evidence_for_letter,
+    generate_cover_letter,
+)
 from main_code.resume_bullet_workflow import (
     DEFAULT_ACADEMIC_PROJECT_FILE,
     DEFAULT_COLUMBIA_COURSES,
@@ -51,6 +62,7 @@ from main_code.resume_bullet_workflow import (
     MAX_BULLET_CHARS,
     MIN_BULLET_CHARS,
     MODEL_CHOICES,
+    extract_jd_signals,
     extract_numbered_bullets,
     extract_starting_verbs,
     generate_bullets,
@@ -96,6 +108,25 @@ class RegenerateRequest(BaseModel):
     seniority: str = ""
 
 
+class CoverLetterRequest(BaseModel):
+    company_name: str
+    position_name: str
+    jd_text: str
+    model: str = DEFAULT_MODEL
+    education: List[str] = []
+    log_prompts: bool = False
+
+
+class CompileCoverLetterRequest(BaseModel):
+    company_name: str
+    position_name: str
+    paragraphs: List[str]
+    # Re-validated server-side before compiling: the draft may have been edited
+    # in the UI between the two calls, and an edit can reintroduce exactly what
+    # the first pass rejected.
+    jd_text: str = ""
+
+
 class CompileRequest(BaseModel):
     company_name: str
     position_name: str
@@ -125,6 +156,7 @@ def get_status():
     return {
         "evidence_files": evidence,
         "template_exists": template_path.exists(),
+        "cover_letter_template_exists": (DATA_DIR / COVER_LETTER_TEMPLATE).exists(),
         "model_choices": MODEL_CHOICES,
         "default_model": DEFAULT_MODEL,
         "generation_modes": list(GENERATION_MODES),
@@ -338,6 +370,103 @@ def compile_resume(req: CompileRequest):
         "tex_name": tex_out.name,
         "qa_report_text": report.render(),
         "qa_report_clean": report.clean,
+    }
+
+
+# ── Cover letter ─────────────────────────────────────────────────────────────
+
+
+@app.post("/api/cover-letter")
+def cover_letter(req: CoverLetterRequest):
+    """Draft a cover letter and report every reason it might not be usable.
+
+    Always returns 200 with an `issues` list rather than raising on a bad draft:
+    the caller needs to SEE what was rejected and why. `usable` is the only field
+    that decides whether this may be attached to an application.
+    """
+    if not req.jd_text.strip():
+        raise HTTPException(status_code=400, detail="jd_text is required")
+
+    try:
+        jd_signals = extract_jd_signals(req.jd_text, req.model)
+        evidence = evidence_for_letter(DATA_DIR)
+        paragraphs, issues = generate_cover_letter(
+            company_name=req.company_name.strip(),
+            position_name=req.position_name.strip(),
+            jd_text=req.jd_text.strip(),
+            jd_signals=jd_signals,
+            evidence=evidence,
+            model=req.model,
+            education=req.education or None,
+            log_prompts=req.log_prompts,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return {
+        "paragraphs": paragraphs,
+        "issues": issues,
+        "usable": not issues,
+        "jd_signals": jd_signals,
+        "word_count": sum(len(p.split()) for p in paragraphs),
+        "limits": {
+            "min_words": MIN_COVER_LETTER_WORDS,
+            "max_words": MAX_COVER_LETTER_WORDS,
+            "max_paragraphs": MAX_COVER_LETTER_PARAGRAPHS,
+        },
+    }
+
+
+@app.post("/api/compile-cover-letter")
+def compile_cover_letter_route(req: CompileCoverLetterRequest):
+    """Compile approved paragraphs to a PDF.
+
+    Kept separate from /api/compile, which is resume-shaped — it takes bullets,
+    coursework and skills, none of which a letter has.
+    """
+    template_path = DATA_DIR / COVER_LETTER_TEMPLATE
+    if not template_path.exists():
+        raise HTTPException(
+            status_code=400, detail=f"data/{COVER_LETTER_TEMPLATE} not found."
+        )
+    if not req.paragraphs:
+        raise HTTPException(status_code=400, detail="No paragraphs to compile.")
+
+    # Re-check the placeholder and grounding rules here. The paragraphs may have
+    # been edited since /api/cover-letter approved them, and a hand-edit can put
+    # back the one thing that must never be submitted.
+    from main_code.cover_letter_workflow import _allowed_claims, validate_cover_letter
+
+    issues = validate_cover_letter(
+        req.paragraphs,
+        req.company_name.strip(),
+        req.position_name.strip(),
+        _allowed_claims(evidence_for_letter(DATA_DIR), req.jd_text),
+    )
+    if issues:
+        raise HTTPException(
+            status_code=422,
+            detail="This letter is not safe to submit: " + " ".join(issues),
+        )
+
+    try:
+        pdf_path, report = compile_cover_letter(
+            paragraphs=req.paragraphs,
+            company_name=req.company_name.strip(),
+            position_name=req.position_name.strip(),
+            data_dir=DATA_DIR,
+            output_dir=OUTPUT_DIR,
+        )
+        pdf_bytes = pdf_path.read_bytes()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return {
+        "pdf_base64": base64.b64encode(pdf_bytes).decode("ascii"),
+        "pdf_name": pdf_path.name,
+        "report": report,
     }
 
 

@@ -5,7 +5,8 @@ __pycache__/
 
 # Generated artifacts
 output/
-reference_resume/
+resumes/
+eval/
 *.pdf
 
 # Local env/config
@@ -13,10 +14,14 @@ reference_resume/
 .env.*
 
 # Personal resume data — kept local. The pipeline reads these at runtime; see data/README.md
-# for the expected shapes and data/main.example.tex for a placeholder template.
+# for the expected shapes and the data/*.example.tex files for placeholder templates.
 data/work_*.json
 data/JD*.txt
 data/proj_academic*.json
 data/skills_inventory.json
 data/main.tex
+data/cover_letter.tex
 CLAUDE.md
+
+# Local agent/editor config
+.claude/

@@ -95,7 +95,7 @@ flowchart LR
 │   ├── work_*.json                 # Work experience evidence files
 │   └── proj_academic_2-2.json      # Academic project pool
 ├── output/                         # Generated artifacts (.tex, .pdf, prompt_logs/)
-├── reference_resume/               # Reference PDFs
+├── resumes/                        # Curated resumes you actually sent (gitignored)
 ├── run.sh                          # One-command launcher (loads .env, starts UI)
 ├── .env                            # Local secrets/config (gitignored)
 ├── Dockerfile                      # Container build (TeX + fonts) for deployment

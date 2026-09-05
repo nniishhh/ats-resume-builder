@@ -544,3 +544,106 @@ def build_bullet_shorten_prompts(
         payload["evidence_for_reference_only"] = projects
     user_prompt = json.dumps(payload, ensure_ascii=True)
     return system_prompt, user_prompt
+
+
+def build_cover_letter_prompts(
+    company_name: str,
+    position_name: str,
+    jd_text: str,
+    jd_signals: Dict[str, Any],
+    evidence: Dict[str, List[Dict[str, Any]]],
+    education: List[str] | None = None,
+    max_paragraphs: int = 4,
+    min_words: int = 180,
+    max_words: int = 380,
+) -> Tuple[str, str]:
+    """Draft a cover letter from the same evidence the bullets are drawn from.
+
+    The grounding contract is the bullets' contract, restated for prose: the letter
+    may only assert what the evidence asserts. Prose makes fabrication easier than
+    bullets do — a bullet that invents a metric looks odd, a paragraph that invents
+    an enthusiasm reads perfectly natural — so the rules below are deliberately
+    blunter than the bullet rules, and the validator refuses rather than trims.
+    """
+    system_prompt = (
+        "You are writing a cover letter for a specific job application. You are given the\n"
+        "candidate's real work evidence and the job description. Write only what the\n"
+        "evidence supports.\n\n"
+        "ABSOLUTE RULES — a letter that breaks any of these is rejected, not edited:\n"
+        "- NEVER invent a number. Every figure you write must appear in the evidence or\n"
+        "  the job description. If you want to convey scale and have no figure, describe\n"
+        "  it in words instead.\n"
+        "- NEVER invent an employer, job title, school, publication, award, tool, or\n"
+        "  clearance. If it is not in the evidence, it did not happen.\n"
+        "- NEVER claim years of experience, team sizes, or seniority that the evidence\n"
+        "  does not state.\n"
+        "- NEVER write a placeholder. Do not emit [Company], {{role}}, <name>, TBD, XXX,\n"
+        "  'your company', or 'the role'. If you cannot fill something from the inputs,\n"
+        "  write the sentence without it. A letter with a placeholder in it is worse\n"
+        "  than no letter, because it gets submitted.\n"
+        "- NEVER claim a personal motivation you were not given: no 'I have long admired',\n"
+        "  no 'since childhood', no invented product anecdote. Ground interest in what the\n"
+        "  job description actually says the work is.\n\n"
+        "WHAT TO WRITE\n"
+        f"- {max_paragraphs} paragraphs or fewer, {min_words}-{max_words} words in total.\n"
+        "- Paragraph 1: the role and employer by name, and the single most relevant thing\n"
+        "  the candidate has actually done. No throat-clearing, no 'I am writing to apply'.\n"
+        "- Middle paragraphs: one concrete piece of evidence each, chosen for how directly\n"
+        "  it answers this JD's top screens. Say what the problem was, what they did, and\n"
+        "  what changed. Use the evidence's own figures verbatim.\n"
+        "- Final paragraph: what they would bring to this specific team, in one or two\n"
+        "  sentences. No restating the whole letter.\n"
+        "- Plain professional prose. No bullet lists, no headings, no markdown, no bold.\n"
+        "- Do NOT write a salutation, a date, an address block, or a sign-off — those are\n"
+        "  added by the template. Write body paragraphs only.\n\n"
+        "OUTPUT FORMAT\n"
+        "Return ONLY the paragraphs, separated by one blank line. No numbering, no labels,\n"
+        "no commentary, no markdown fences."
+    )
+
+    payload: Dict[str, Any] = {
+        "company_name": company_name,
+        "position_name": position_name,
+        "jd_signals": jd_signals,
+        "job_description": jd_text,
+        "work_evidence": evidence,
+    }
+    if education:
+        payload["education"] = education
+    user_prompt = json.dumps(payload, ensure_ascii=True)
+    return system_prompt, user_prompt
+
+
+def build_cover_letter_repair_prompts(
+    draft: str,
+    issues: List[str],
+    company_name: str,
+    position_name: str,
+    evidence: Dict[str, List[Dict[str, Any]]],
+) -> Tuple[str, str]:
+    """One repair round, mirroring the bullet repair path.
+
+    Sends the issues verbatim rather than re-describing them, so the model fixes the
+    thing the validator actually objected to.
+    """
+    system_prompt = (
+        "You are revising a cover letter that failed validation. Fix ONLY the listed\n"
+        "problems and keep everything else as written.\n\n"
+        "- If a figure was flagged as absent from the evidence, remove the figure or\n"
+        "  replace it with one that IS in the evidence. Do not substitute a different\n"
+        "  invented number.\n"
+        "- If a placeholder was flagged, rewrite the sentence so it does not need one.\n"
+        "- If the letter was too long or too short, adjust length without adding new claims.\n\n"
+        "Return ONLY the corrected paragraphs, separated by one blank line. No commentary."
+    )
+    user_prompt = json.dumps(
+        {
+            "company_name": company_name,
+            "position_name": position_name,
+            "problems_to_fix": issues,
+            "current_draft": draft,
+            "work_evidence": evidence,
+        },
+        ensure_ascii=True,
+    )
+    return system_prompt, user_prompt

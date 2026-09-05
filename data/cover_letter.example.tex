@@ -1,0 +1,55 @@
+% Placeholder template. Copy to data/cover_letter.tex and fill in your details.
+%
+% Header, fonts and margins deliberately match main.tex so the resume and the
+% letter read as one pair of documents — keep them in step if you change either.
+%
+% The <<<TOKEN>>> markers are filled in by main_code/build_cover_letter.py, which
+% refuses to compile if any of them survive injection. They are intentionally NOT
+% LaTeX comments — a marker that leaks must be visible, not silently invisible.
+\documentclass[a4paper,10pt]{article}
+\usepackage[left=0.9in, right=0.9in, top=0.7in, bottom=0.7in]{geometry}
+\usepackage[hidelinks]{hyperref}
+\usepackage{fontspec}
+\setmainfont{Times New Roman}
+
+\pagestyle{empty}
+\frenchspacing
+
+% Block paragraphs: no indent, a clear gap between them. A letter is read as
+% blocks, unlike the resume's dense sections.
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{9pt}
+
+\begin{document}
+
+% Header — same identity block as the resume
+\begin{center}
+    {\Huge \textbf{YOUR NAME}} \\ \vspace{4pt}
+    (000) 000-0000 $|$ \href{mailto:you@example.edu}{you@example.edu} $|$ \href{https://linkedin.com/in/your-handle}{linkedin.com/in/your-handle}
+\end{center}
+
+\vspace{10pt}
+
+<<<DATE>>>
+
+\vspace{2pt}
+
+Hiring Team \\
+<<<COMPANY>>>
+
+\vspace{4pt}
+
+\textbf{Re: <<<ROLE>>>}
+
+\vspace{4pt}
+
+Dear Hiring Team,
+
+<<<BODY>>>
+
+\vspace{6pt}
+
+Sincerely, \\
+Your Name
+
+\end{document}

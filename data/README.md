@@ -1,8 +1,8 @@
 # `data/` — local inputs
 
-Everything in here except `main.example.tex` and this file is **gitignored**. The pipeline reads
-real work history, job descriptions, and a skills inventory at runtime, and none of that belongs
-in a public repo.
+Everything in here except the `*.example.tex` templates and this file is **gitignored**. The
+pipeline reads real work history, job descriptions, a skills inventory, and your own name and
+contact details at runtime, and none of that belongs in a public repo.
 
 To run the pipeline you need to create these locally.
 
@@ -10,6 +10,18 @@ To run the pipeline you need to create these locally.
 
 Copy `main.example.tex` to `main.tex` and fill in your details. It documents the four regex
 anchors the pipeline injects into — keep them intact.
+
+## `cover_letter.tex`
+
+Copy `cover_letter.example.tex` to `cover_letter.tex` and fill in the same identity block you put
+in `main.tex` — the header, fonts and margins match on purpose, so the resume and the letter read
+as one pair of documents.
+
+The `<<<DATE>>>`, `<<<COMPANY>>>`, `<<<ROLE>>>` and `<<<BODY>>>` markers are filled in by
+`main_code/build_cover_letter.py`, which refuses to compile if any of them survive injection.
+Leave them exactly as they are. Without this file `/api/compile-cover-letter` returns a 400 and
+`/api/status` reports `cover_letter_template_exists: false`, the same way a missing `main.tex`
+behaves.
 
 ## `work_<company>_<min>-<max>.json`
 
